@@ -21,8 +21,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         # go.mod is the single source of truth for the toolchain version.
         go-version-file: go.mod
@@ -37,7 +37,7 @@ jobs:
       # runner ships its own shellcheck, and letting that decide what is clean
       # is how a lint failure first appears after a tag is already cut.
       run: make shellcheck
-    - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+    - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
       with:
         version: v2.13.1
   test:
@@ -51,8 +51,8 @@ jobs:
         - macos-latest
         - windows-latest
     steps:
-    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
     - name: Test with race detector and coverage
@@ -66,7 +66,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       shell: bash
       run: go tool cover -func=cover.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
-    - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+    - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
       if: matrix.os == 'ubuntu-latest'
       with:
         files: cover.out
@@ -91,8 +91,8 @@ jobs:
         - goos: windows
           goarch: amd64
     steps:
-    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
     - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -105,8 +105,8 @@ jobs:
     name: Self-hosting
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
     # The formatter's own repository must pass its own formatter, including
@@ -117,8 +117,8 @@ jobs:
     name: Compatibility matrix
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
     # Its own job because it reaches the network: it re-derives every row from
@@ -132,8 +132,8 @@ jobs:
     name: Fuzz smoke
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
     # A short run on every PR. The long run is `make release-check` before a
