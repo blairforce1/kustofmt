@@ -108,8 +108,10 @@ git diff --cached --name-only -z --diff-filter=ACM -- '*.yaml' '*.yml' |
 ### In CI
 
 ```yaml
+# Pin the kustofmt built from the same kyaml your kustomize ships;
+# see the compatibility table below. Image tags carry no leading "v".
 - name: Check YAML formatting
-  run: docker run --rm -v "$PWD:/data:ro,z" -w /data ghcr.io/blairforce1/kustofmt:v0.1.0 -l .
+  run: docker run --rm -v "$PWD:/data:ro,z" -w /data ghcr.io/blairforce1/kustofmt:0.1.2 -l .
 ```
 
 ### As a library
