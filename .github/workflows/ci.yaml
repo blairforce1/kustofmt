@@ -128,6 +128,28 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: make compat-check-complete
+  signing:
+    name: Signing
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    # release.yaml holds the pin; this job reads it rather than repeating it. A
+    # second copy could drift, and the drift would show up as a skipped test
+    # rather than a failure -- the quietest possible way to lose a check.
+    - name: Read the cosign version the release pins
+      id: cosign
+      run: echo "version=$(make -s cosign-version)" >> "$GITHUB_OUTPUT"
+    - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      with:
+        cosign-release: ${{ steps.cosign.outputs.version }}
+    # The only job that executes anything from the release pipeline. Nothing
+    # else here runs release.yaml, which is how a signing config that produces
+    # no signature stayed invisible until a tag was already cut.
+    - name: Run the release's own cosign arguments
+      run: make sign-check
   fuzz-smoke:
     name: Fuzz smoke
     runs-on: ubuntu-latest
