@@ -37,6 +37,17 @@ func Diff(oldName, newName string, old, new []byte) string {
 	return b.String()
 }
 
+// noEOLMarker is the conventional unified-diff note for a file whose last line
+// has no terminating newline.
+const noEOLMarker = "\\ No newline at end of file"
+
+// noEOLSentinel is appended to the final line of a file that does not end in a
+// newline. Carrying the fact in the line itself means "a: 1" and "a: 1\n"
+// compare as different lines -- which they are -- instead of the difference
+// vanishing and Diff wrongly reporting the files identical. The sentinel is
+// stripped and turned back into a marker line when the hunk is rendered.
+const noEOLSentinel = "\x00noeol"
+
 // splitLines splits into lines without a trailing empty element, so a file
 // ending in a newline does not appear to have a final blank line.
 func splitLines(b []byte) []string {
@@ -44,8 +55,22 @@ func splitLines(b []byte) []string {
 	if s == "" {
 		return nil
 	}
-	s = strings.TrimSuffix(s, "\n")
-	return strings.Split(s, "\n")
+	if strings.HasSuffix(s, "\n") {
+		return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+	}
+	lines := strings.Split(s, "\n")
+	lines[len(lines)-1] += noEOLSentinel
+	return lines
+}
+
+// writeLine emits one diff line, converting a sentinel back into the marker.
+func writeLine(b *strings.Builder, prefix, line string) {
+	if rest, ok := strings.CutSuffix(line, noEOLSentinel); ok {
+		b.WriteString(prefix + rest + "\n")
+		b.WriteString(noEOLMarker + "\n")
+		return
+	}
+	b.WriteString(prefix + line + "\n")
 }
 
 type opKind int
@@ -73,11 +98,11 @@ func (h hunk) String() string {
 	for _, e := range h.edits {
 		switch e.kind {
 		case opEqual:
-			b.WriteString(" " + e.line + "\n")
+			writeLine(&b, " ", e.line)
 		case opDelete:
-			b.WriteString("-" + e.line + "\n")
+			writeLine(&b, "-", e.line)
 		case opInsert:
-			b.WriteString("+" + e.line + "\n")
+			writeLine(&b, "+", e.line)
 		}
 	}
 	return b.String()

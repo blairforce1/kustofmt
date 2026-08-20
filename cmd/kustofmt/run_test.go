@@ -335,3 +335,27 @@ func TestUnknownFlagFails(t *testing.T) {
 		t.Error("expected usage output on stderr")
 	}
 }
+
+// TestSemanticsRefusalLeavesFileAlone: when the formatter cannot vouch for its
+// own output it must not write. The message has to say what to do about it,
+// because "would change the document's meaning" alone is not actionable.
+func TestSemanticsRefusalLeavesFileAlone(t *testing.T) {
+	const folded = "key: >\n  one\n   two\n"
+	dir := writeTree(t, map[string]string{"a.yaml": folded})
+	path := filepath.Join(dir, "a.yaml")
+
+	code, _, stderr := exercise(t, "", "-w", path)
+	if code != exitError {
+		t.Errorf("exit = %d, want %d", code, exitError)
+	}
+	if !strings.Contains(stderr, "left unchanged") || !strings.Contains(stderr, "literal (|)") {
+		t.Errorf("stderr should explain the fix, got: %s", stderr)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != folded {
+		t.Error("the file was rewritten despite the refusal")
+	}
+}

@@ -115,6 +115,8 @@ func TestDiffMatchesSystemDiff(t *testing.T) {
 }
 
 // applyUnified is a minimal unified-diff applier, used to verify our output.
+// A "\\ No newline at end of file" marker refers to the line immediately before
+// it, so it only affects the result when that line is a context or added line.
 func applyUnified(old, diff string) (string, error) {
 	oldLines := strings.Split(strings.TrimSuffix(old, "\n"), "\n")
 	if old == "" {
@@ -122,14 +124,14 @@ func applyUnified(old, diff string) (string, error) {
 	}
 	var out []string
 	cursor := 0
+	newEndsWithoutNewline := false
 
 	lines := strings.Split(strings.TrimSuffix(diff, "\n"), "\n")
 	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-		if !strings.HasPrefix(line, "@@") {
+		if !strings.HasPrefix(lines[i], "@@") {
 			continue
 		}
-		start, err := hunkOldStart(line)
+		start, err := hunkOldStart(lines[i])
 		if err != nil {
 			return "", err
 		}
@@ -138,31 +140,52 @@ func applyUnified(old, diff string) (string, error) {
 		}
 		out = append(out, oldLines[cursor:start]...)
 		cursor = start
+
+		prevPrefix := byte(0)
 		for i+1 < len(lines) && !strings.HasPrefix(lines[i+1], "@@") {
 			i++
 			body := lines[i]
-			switch {
-			case strings.HasPrefix(body, " "):
+			if body == `\ No newline at end of file` {
+				if prevPrefix == ' ' || prevPrefix == '+' {
+					newEndsWithoutNewline = true
+				}
+				continue
+			}
+			if body == "" {
+				continue
+			}
+			prevPrefix = body[0]
+			switch body[0] {
+			case ' ':
 				if cursor >= len(oldLines) || oldLines[cursor] != body[1:] {
 					return "", fmt.Errorf("context mismatch at line %d: %q", cursor, body[1:])
 				}
 				out = append(out, body[1:])
 				cursor++
-			case strings.HasPrefix(body, "-"):
+			case '-':
 				if cursor >= len(oldLines) || oldLines[cursor] != body[1:] {
 					return "", fmt.Errorf("deletion mismatch at line %d: %q", cursor, body[1:])
 				}
 				cursor++
-			case strings.HasPrefix(body, "+"):
+			case '+':
 				out = append(out, body[1:])
 			}
 		}
 	}
-	out = append(out, oldLines[cursor:]...)
+	// Any lines after the final hunk are copied straight from the old file, so
+	// the result inherits the old file's trailing-newline state.
+	if tail := oldLines[cursor:]; len(tail) > 0 {
+		out = append(out, tail...)
+		newEndsWithoutNewline = !strings.HasSuffix(old, "\n")
+	}
 	if len(out) == 0 {
 		return "", nil
 	}
-	return strings.Join(out, "\n") + "\n", nil
+	joined := strings.Join(out, "\n")
+	if newEndsWithoutNewline {
+		return joined, nil
+	}
+	return joined + "\n", nil
 }
 
 // hunkOldStart parses the 0-based old-file start offset from "@@ -a,b +c,d @@".

@@ -23,7 +23,9 @@ package format
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"reflect"
 	"strings"
 
 	"sigs.k8s.io/kustomize/kyaml/yaml"
@@ -32,13 +34,65 @@ import (
 // mergeTag is the resolved tag yaml.v3 assigns to a "<<" merge key.
 const mergeTag = "!!merge"
 
+// maxPasses bounds the convergence loop in Format.
+const maxPasses = 4
+
+// ErrNotConverged is returned when repeated formatting never reaches a fixed
+// point. It should not happen; it exists so that it cannot happen silently.
+var ErrNotConverged = errors.New("formatting did not converge")
+
+// ErrSemanticsChanged is returned when formatting would alter what the document
+// means. Callers should leave the file alone and report it.
+var ErrSemanticsChanged = errors.New("formatting would change the document's meaning")
+
 // Format applies kustomize's house style to a YAML document stream.
 //
-// Input that parses to zero documents — an empty file, or one containing only
-// comments — is returned unchanged. The YAML object model cannot represent a
+// Input that parses to zero documents -- an empty file, or one containing only
+// comments -- is returned unchanged. The YAML object model cannot represent a
 // document that has no content, so re-emitting such a file would discard its
 // comments entirely. A formatter that eats comments is a vandal.
+//
+// The result is checked before it is returned: it must be a fixed point, and it
+// must decode to exactly the same values as the input. Both checks defend
+// against defects in the underlying YAML emitter, which are not hypothetical --
+// see verifySemantics. A formatter that cannot vouch for its output should
+// refuse to produce it rather than hand back a file that looks fine.
 func Format(in []byte) ([]byte, error) {
+	out, err := formatOnce(in)
+	if err != nil {
+		return nil, err
+	}
+	// Check meaning before stability. A semantics change is both the more
+	// serious failure and the more specific diagnosis, so it should be the
+	// error the user sees when a document manages to trigger both.
+	if err := verifySemantics(in, out); err != nil {
+		return nil, err
+	}
+
+	// Converge. The emitter is not perfectly stable for every comment
+	// placement: a foot comment can gain a blank line on the pass after it is
+	// first written. Iterating to a fixed point makes Format idempotent by
+	// construction, which is what -l and pre-commit hooks depend on.
+	for pass := 1; ; pass++ {
+		next, err := formatOnce(out)
+		if err != nil {
+			return nil, err
+		}
+		if err := verifySemantics(in, next); err != nil {
+			return nil, err
+		}
+		if bytes.Equal(next, out) {
+			return out, nil
+		}
+		if pass >= maxPasses {
+			return nil, fmt.Errorf("%w after %d passes", ErrNotConverged, maxPasses)
+		}
+		out = next
+	}
+}
+
+// formatOnce is a single formatting pass.
+func formatOnce(in []byte) ([]byte, error) {
 	docs, err := parse(in)
 	if err != nil {
 		return nil, err
@@ -70,6 +124,53 @@ func Format(in []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// verifySemantics checks that formatting changed only presentation.
+//
+// This is not defensive programming for its own sake. The underlying emitter
+// corrupts folded scalars whose content contains an indented line: given
+//
+//	key: >
+//	  one
+//	   two
+//
+// it re-emits a value with an extra newline in it. Detecting that and refusing
+// is the difference between a formatter and a silent data-loss bug, and the
+// cost is one extra parse of a file we have already parsed twice.
+func verifySemantics(in, out []byte) error {
+	before, err := decodeValues(in)
+	if err != nil {
+		// The input does not reduce to plain values (duplicate keys, say).
+		// There is nothing to compare against, so do not invent a failure.
+		return nil //nolint:nilerr // deliberate: no comparison is possible
+	}
+	after, err := decodeValues(out)
+	if err != nil {
+		return fmt.Errorf("formatted output does not parse: %w", err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		return ErrSemanticsChanged
+	}
+	return nil
+}
+
+// decodeValues reduces a stream to plain Go values, discarding everything the
+// formatter is allowed to change and keeping everything it must not.
+func decodeValues(b []byte) ([]any, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	var out []any
+	for {
+		var v any
+		err := dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
 }
 
 // parse decodes every document in the stream. A stream of only comments or

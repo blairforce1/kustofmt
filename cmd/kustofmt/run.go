@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -131,7 +132,7 @@ func runStdin(opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	out, err := format.Format(src)
 	if err != nil {
-		fmt.Fprintf(stderr, "kustofmt: %s: %v\n", stdinName, err)
+		fmt.Fprintf(stderr, "kustofmt: %s: %v\n", stdinName, describe(err))
 		return exitError
 	}
 	return reportResult(stdinName, opts, src, out, stdout, stderr)
@@ -151,7 +152,7 @@ func processFile(path string, opts options, stdout, stderr io.Writer) int {
 	if err != nil {
 		// A parse failure names the file and does not stop the walk: one bad
 		// file in a large repository should not hide the state of the rest.
-		fmt.Fprintf(stderr, "kustofmt: %s: %v\n", path, err)
+		fmt.Fprintf(stderr, "kustofmt: %s: %v\n", path, describe(err))
 		return exitError
 	}
 	if opts.write {
@@ -200,6 +201,17 @@ func writeFile(path string, src, out []byte) error {
 }
 
 func bytesEqual(a, b []byte) bool { return string(a) == string(b) }
+
+// describe adds context to the errors a user is most likely to hit, so the
+// message says what to do rather than only what went wrong.
+func describe(err error) error {
+	if errors.Is(err, format.ErrSemanticsChanged) {
+		return fmt.Errorf("%w; left unchanged. This is usually a folded (>) scalar "+
+			"containing an indented line, which the YAML emitter cannot reproduce "+
+			"exactly. Rewriting it as a literal (|) scalar avoids the ambiguity", err)
+	}
+	return err
+}
 
 // collect expands the given paths into a sorted list of YAML files.
 // Directories are walked; explicitly named files are taken as given, whatever

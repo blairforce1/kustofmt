@@ -2,6 +2,7 @@ package format_test
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -291,5 +292,55 @@ func TestCRLFNormalisedToLF(t *testing.T) {
 	}
 	if bytes.Contains(got, []byte("\r")) {
 		t.Errorf("carriage returns survived: %q", got)
+	}
+}
+
+// TestSemanticsGuard covers the case the fuzzer found: the underlying emitter
+// corrupts a folded scalar whose content contains an indented line, injecting
+// an extra newline into the value. Rather than write that to disk, Format
+// refuses. The file is left for a human to look at.
+func TestSemanticsGuard(t *testing.T) {
+	t.Parallel()
+	// A folded scalar whose second line is indented relative to the first.
+	in := []byte("key: >\n  one\n   two\n")
+	_, err := format.Format(in)
+	if err == nil {
+		t.Fatal("expected Format to refuse, got no error")
+	}
+	if !errors.Is(err, format.ErrSemanticsChanged) {
+		t.Fatalf("error = %v, want ErrSemanticsChanged", err)
+	}
+}
+
+// TestOrdinaryFoldedScalarsStillFormat: the guard must not be so broad that it
+// rejects folded scalars in general, which are common in Kubernetes manifests.
+func TestOrdinaryFoldedScalarsStillFormat(t *testing.T) {
+	t.Parallel()
+	in := []byte("key: >\n  one\n  two\nlist: [a, b]\n")
+	out, err := format.Format(in)
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	if !bytes.Contains(out, []byte("- a")) {
+		t.Errorf("the rest of the document was not formatted:\n%s", out)
+	}
+}
+
+// TestConvergence: the guarantee is that the returned bytes are a fixed point,
+// even where a single pass of the emitter is not stable.
+func TestConvergence(t *testing.T) {
+	t.Parallel()
+	// A foot comment gains a blank line on the pass after it is first emitted.
+	in := []byte("\n0 #\n#")
+	once, err := format.Format(in)
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	twice, err := format.Format(once)
+	if err != nil {
+		t.Fatalf("second Format: %v", err)
+	}
+	if !bytes.Equal(once, twice) {
+		t.Errorf("result is not a fixed point\nfirst:  %q\nsecond: %q", once, twice)
 	}
 }
