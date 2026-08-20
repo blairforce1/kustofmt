@@ -142,14 +142,6 @@ func hunks(old, new []srcLine) []hunk {
 	// next hunk, or be flushed if the hunks are far enough apart to split.
 	var pending []edit
 
-	flush := func() {
-		if cur != nil {
-			out = append(out, *cur)
-			cur = nil
-		}
-		pending = nil
-	}
-
 	for _, e := range edits {
 		if e.kind == opEqual {
 			if cur == nil {
@@ -176,15 +168,14 @@ func hunks(old, new []srcLine) []hunk {
 		}
 
 		if cur == nil {
+			// The hunk starts far enough back to include the context being held.
 			cur = &hunk{oldStart: oldLine - len(pending), newStart: newLine - len(pending)}
-			cur.edits = append(cur.edits, pending...)
-			cur.oldCount += len(pending)
-			cur.newCount += len(pending)
-		} else {
-			cur.edits = append(cur.edits, pending...)
-			cur.oldCount += len(pending)
-			cur.newCount += len(pending)
 		}
+		// Held context becomes leading context, whether the hunk is new or the
+		// change simply follows a short unchanged run inside an open one.
+		cur.edits = append(cur.edits, pending...)
+		cur.oldCount += len(pending)
+		cur.newCount += len(pending)
 		pending = nil
 
 		cur.edits = append(cur.edits, e)
@@ -198,13 +189,14 @@ func hunks(old, new []srcLine) []hunk {
 		}
 	}
 
+	// Close the hunk left open at end of file, with its trailing context.
 	if cur != nil {
 		n := min(len(pending), contextLines)
 		cur.edits = append(cur.edits, pending[:n]...)
 		cur.oldCount += n
 		cur.newCount += n
+		out = append(out, *cur)
 	}
-	flush()
 	return out
 }
 
