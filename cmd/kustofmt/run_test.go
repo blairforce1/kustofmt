@@ -145,6 +145,84 @@ func TestWritePreservesFileMode(t *testing.T) {
 	}
 }
 
+// TestWriteReplacesSymlinkTargetNotTheLink: a repository that shares a manifest
+// by symlinking it must still have a symlink afterwards. Renaming over the link
+// would quietly turn it into a regular file and fork the two copies.
+func TestWriteReplacesSymlinkTargetNotTheLink(t *testing.T) {
+	dir := writeTree(t, map[string]string{"shared/values.yaml": messy})
+	target := filepath.Join(dir, "shared", "values.yaml")
+	link := filepath.Join(dir, "values.yaml")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if code, _, stderr := exercise(t, "", "-w", link); code != exitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("the symlink was replaced by a regular file")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != tidy {
+		t.Errorf("target =\n%s\nwant:\n%s", got, tidy)
+	}
+}
+
+// TestWriteRefusesAReadOnlyFile: renaming a replacement into place needs write
+// permission on the directory, not on the file, so the atomic write has to ask
+// about the file explicitly. Without that, chmod -w stops protecting a manifest
+// the moment the write strategy changes.
+func TestWriteRefusesAReadOnlyFile(t *testing.T) {
+	dir := writeTree(t, map[string]string{"a.yaml": messy})
+	path := filepath.Join(dir, "a.yaml")
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, stderr := exercise(t, "", "-w", path)
+	if code != exitError {
+		t.Errorf("exit = %d, want %d", code, exitError)
+	}
+	if !strings.Contains(stderr, "permission denied") {
+		t.Errorf("stderr = %q, want a permission error", stderr)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != messy {
+		t.Error("a read-only file was rewritten")
+	}
+}
+
+// TestWriteLeavesNoTemporaryFiles: the write goes via a temporary alongside the
+// target, and a formatter that litters a repository with them is worse than one
+// that writes in place.
+func TestWriteLeavesNoTemporaryFiles(t *testing.T) {
+	dir := writeTree(t, map[string]string{"a.yaml": messy, "b.yaml": messy})
+	if code, _, stderr := exercise(t, "", "-w", dir); code != exitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 2 {
+		t.Errorf("directory contains %v, want exactly the two YAML files", names)
+	}
+}
+
 func TestDiffMode(t *testing.T) {
 	dir := writeTree(t, map[string]string{"a.yaml": messy})
 	path := filepath.Join(dir, "a.yaml")

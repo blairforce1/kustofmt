@@ -209,15 +209,78 @@ func reportResult(name string, opts options, src, out []byte, stdout, stderr io.
 // writeFile replaces path only when the content actually changed, so a
 // formatting run over a clean repository leaves every mtime alone and does not
 // churn build caches or file watchers.
+//
+// The replacement is written to a temporary file alongside the target and
+// renamed over it. Writing in place would mean opening the real file with
+// O_TRUNC, which leaves a window where an interrupted run -- a Ctrl-C partway
+// through a repository, a cancelled CI job, a full disk -- has emptied a
+// manifest and not yet written it back. rename(2) is atomic within a
+// filesystem, so a concurrent reader sees the old file or the new one and
+// never half of either.
+//
+// The cost is that the file gets a new inode, which breaks any hard link to
+// it. Hard-linked YAML is rare; a truncated manifest in a GitOps repository is
+// expensive. Symlinks are followed rather than replaced, below, because those
+// are not rare at all.
 func writeFile(path string, src, out []byte) error {
 	if bytesEqual(src, out) {
 		return nil
 	}
-	info, err := os.Stat(path)
+	// Replace what a link points at, not the link itself: repositories that
+	// share a manifest by symlinking it expect the link to survive a format
+	// run, which is what writing through the file descriptor used to do.
+	target, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, out, info.Mode().Perm())
+	info, err := os.Stat(target)
+	if err != nil {
+		return err
+	}
+	// Renaming over a file needs write permission on its *directory*, not on
+	// the file, so the atomic path would happily replace a read-only manifest
+	// that a plain write refused. Ask the question the old in-place write asked
+	// implicitly, and refuse for the same reason it did.
+	probe, err := os.OpenFile(target, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	if err := probe.Close(); err != nil {
+		return err
+	}
+
+	// The temporary file has to share a directory with its target: rename is
+	// only atomic within a filesystem, and the system temp directory is
+	// routinely a different one. The leading dot keeps it out of the way of
+	// anything watching the directory for manifests.
+	tmp, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".kustofmt-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		// Both are no-ops on the success path, where the file is already
+		// closed and no longer at this name.
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+	}()
+
+	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
+		return err
+	}
+	if _, err := tmp.Write(out); err != nil {
+		return err
+	}
+	// Sync before the rename. The rename is atomic to other processes whatever
+	// we do, but a machine that loses power holding the metadata change and
+	// not the data would resurrect the file as a well-named empty one.
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, target)
 }
 
 func bytesEqual(a, b []byte) bool { return string(a) == string(b) }
