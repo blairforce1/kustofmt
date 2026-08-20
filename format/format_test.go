@@ -312,6 +312,57 @@ func TestSemanticsGuard(t *testing.T) {
 	}
 }
 
+// TestUnverifiableInputIsFlagged: the semantics check needs an input that
+// decodes to plain values. A duplicate key denies it one, so the guard cannot
+// run and the fixed-point check is all that is left. When that check is the one
+// that fails, the error has to say the stronger guarantee was never in play --
+// otherwise the file looks like an ordinary convergence failure.
+func TestUnverifiableInputIsFlagged(t *testing.T) {
+	t.Parallel()
+	// The folded-scalar defect from TestSemanticsGuard, plus a duplicate key
+	// that stops the input decoding at all.
+	in := []byte("dup: 1\ndup: 2\nkey: >\n  one\n   two\n")
+	_, err := format.Format(in)
+	if err == nil {
+		t.Fatal("expected Format to refuse, got no error")
+	}
+	if !errors.Is(err, format.ErrNotVerifiable) {
+		t.Errorf("error = %v, want it to report ErrNotVerifiable", err)
+	}
+	if !errors.Is(err, format.ErrNotConverged) {
+		t.Errorf("error = %v, want it to still report ErrNotConverged", err)
+	}
+}
+
+// TestUnverifiableInputStillFormats: a document the guard cannot check is not
+// thereby rejected. Duplicate keys are unusual, not malformed, and refusing
+// every unusual file would make the tool useless on the repositories that most
+// need it.
+func TestUnverifiableInputStillFormats(t *testing.T) {
+	t.Parallel()
+	out, err := format.Format([]byte("dup: 1\ndup: 2\nlist: [a, b]\n"))
+	if err != nil {
+		t.Fatalf("Format: %v", err)
+	}
+	if !bytes.Contains(out, []byte("- a")) {
+		t.Errorf("the document was not formatted:\n%s", out)
+	}
+}
+
+// TestVerifiedFailureIsNotFlagged: the counterpart. A file that *is* verifiable
+// must keep the precise diagnosis; ErrNotVerifiable leaking onto it would send
+// the user hunting for duplicate keys that are not there.
+func TestVerifiedFailureIsNotFlagged(t *testing.T) {
+	t.Parallel()
+	_, err := format.Format([]byte("key: >\n  one\n   two\n"))
+	if err == nil {
+		t.Fatal("expected Format to refuse, got no error")
+	}
+	if errors.Is(err, format.ErrNotVerifiable) {
+		t.Errorf("error = %v, but this document decodes fine", err)
+	}
+}
+
 // TestOrdinaryFoldedScalarsStillFormat: the guard must not be so broad that it
 // rejects folded scalars in general, which are common in Kubernetes manifests.
 func TestOrdinaryFoldedScalarsStillFormat(t *testing.T) {

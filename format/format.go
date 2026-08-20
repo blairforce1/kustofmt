@@ -45,6 +45,20 @@ var ErrNotConverged = errors.New("formatting did not converge")
 // means. Callers should leave the file alone and report it.
 var ErrSemanticsChanged = errors.New("formatting would change the document's meaning")
 
+// ErrNotVerifiable reports that the semantics check could not run on a
+// document. The check compares the values the input decodes to against the
+// values the output decodes to, so it needs an input that decodes: a file with
+// duplicate keys, or aliasing past the decoder's budget, offers nothing to
+// compare against.
+//
+// Such files are still formatted -- refusing them would reject documents that
+// are merely unusual -- but they are formatted with the strongest guarantee
+// switched off, leaving only the fixed-point check behind it. It is never
+// returned on its own; it is joined to whatever else went wrong, so that a
+// failure on an unverified file reads differently from a failure on a
+// verified one.
+var ErrNotVerifiable = errors.New("semantics could not be verified for this document")
+
 // Format applies kustomize's house style to a YAML document stream.
 //
 // Input that parses to zero documents -- an empty file, or one containing only
@@ -89,7 +103,14 @@ func Format(in []byte) ([]byte, error) {
 			return out, nil
 		}
 		if pass >= maxPasses {
-			return nil, fmt.Errorf("%w after %d passes", ErrNotConverged, maxPasses)
+			err := fmt.Errorf("%w after %d passes", ErrNotConverged, maxPasses)
+			if !verifiable {
+				// The fixed-point check was the only guard standing, and it is
+				// the one that just failed. Say so: the diagnosis for this file
+				// is different from the one for a file that was verified.
+				err = fmt.Errorf("%w (%w)", err, ErrNotVerifiable)
+			}
+			return nil, err
 		}
 		out = next
 	}

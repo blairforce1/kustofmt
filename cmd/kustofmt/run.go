@@ -236,6 +236,16 @@ func describe(err error) error {
 			"containing an indented line, which the YAML emitter cannot reproduce "+
 			"exactly. Rewriting it as a literal (|) scalar avoids the ambiguity", err)
 	}
+	if errors.Is(err, format.ErrNotVerifiable) {
+		// Same underlying defect as above in almost every case, but the
+		// semantics check could not run to name it, so the user gets an
+		// unhelpful "did not converge" unless we explain what happened.
+		return fmt.Errorf("%w; left unchanged. The check that compares meaning "+
+			"before and after needs a document that decodes to plain values, and "+
+			"this one does not -- usually duplicate keys. Fixing that lets kustofmt "+
+			"diagnose the file properly; a folded (>) scalar containing an indented "+
+			"line is the likeliest cause underneath", err)
+	}
 	return err
 }
 

@@ -148,10 +148,11 @@ Guarantees, each backed by tests:
   `Kustomization` exports, pass `-l` untouched. Both are golden fixtures
   captured from real output.
 
-kustofmt checks the last two on **every file it formats**, not just in tests. If
-the result would not decode to the same values as the input, or is not a fixed
-point, kustofmt refuses to write it and tells you why. This is not paranoia; see
-[Known limitations](#known-limitations).
+kustofmt checks the first two on **every file it formats**, not just in tests.
+If the result would not decode to the same values as the input, or is not a
+fixed point, kustofmt refuses to write it and tells you why. This is not
+paranoia; see [Known limitations](#known-limitations) — including the one class
+of file where the semantics check cannot run at all.
 
 ## sops safety, on by default
 
@@ -257,6 +258,15 @@ silently changing your data. kustofmt detects this, refuses to write the file,
 and suggests rewriting the scalar as a literal (`|`), which has no such
 ambiguity. Ordinary folded scalars are formatted normally. This was found by
 fuzzing, not by a user, and it is the reason `Format` verifies its own output.
+
+**A document that does not decode cannot be semantics-checked.** The meaning
+check compares the values the input decodes to against the values the output
+decodes to, so it needs an input that decodes. A file with duplicate keys, or
+with aliasing past the YAML decoder's budget, offers nothing to compare
+against: it is formatted with that guard inoperative and only the fixed-point
+check standing behind it. Such files are still formatted rather than refused —
+they are unusual, not malformed — but if anything then goes wrong kustofmt says
+the guard was never in play rather than reporting a bare convergence failure.
 
 **Folded scalars are re-flowed.** `>` folds line breaks into spaces by
 definition, so the emitter re-joins them at its own width. The value is
