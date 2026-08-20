@@ -79,10 +79,20 @@ jobs:
         git config user.email 'git@blairforce1.com'
         git tag -a "$VERSION" -m "kustofmt $VERSION"
         git push origin "$VERSION"
+    # Pinning the action is not enough when the action installs a tool: the tool
+    # version has to be pinned too, or an action bump silently changes it.
+    # cosign v3 deprecated --output-certificate and --output-signature, which
+    # .goreleaser.yaml passes -- under v3 they are ignored and NO signature files
+    # are written, so a release would publish unsigned without failing. These are
+    # the versions that produced v0.1.0 through v0.1.4.
     - if: steps.target.outputs.release == 'true'
       uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      with:
+        cosign-release: v2.5.2
     - if: steps.target.outputs.release == 'true'
       uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+      with:
+        syft-version: v1.42.3
     - if: steps.target.outputs.release == 'true'
       uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
     - if: steps.target.outputs.release == 'true'
@@ -117,7 +127,7 @@ jobs:
     - if: steps.target.outputs.release == 'true'
       uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
       with:
-        version: '~> v2'
+        version: v2.17.1
         args: release --clean --release-notes=/tmp/release-notes.md
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
