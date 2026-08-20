@@ -32,6 +32,15 @@ type Release struct {
 
 // Matrix is the whole compatibility file.
 type Matrix struct {
+	// Version is the kustofmt release this tree would publish, and the number
+	// the release workflow tags.
+	//
+	// It is deliberately not derived from the newest row. Most releases are
+	// driven by kyaml and do add a row, but a change with no kyaml behind it --
+	// a packaging or signing change -- has no row to add, because one row per
+	// kyaml is an invariant validate enforces. Without a version of its own,
+	// such a change could never be released at all.
+	Version string `yaml:"version"`
 	// Floor is the oldest kustomize release tracked. Anything older is
 	// deliberately absent rather than accidentally missing, and the gate needs
 	// to know the difference.
@@ -62,6 +71,12 @@ func (m *Matrix) validate() error {
 	if m.Floor == "" {
 		return errors.New("floor is required")
 	}
+	if m.Version == "" {
+		return errors.New("version is required")
+	}
+	if strings.HasPrefix(m.Version, "v") {
+		return fmt.Errorf("version %q should not carry a leading v", m.Version)
+	}
 	if len(m.Releases) == 0 {
 		return errors.New("no releases recorded")
 	}
@@ -89,6 +104,13 @@ func (m *Matrix) validate() error {
 			}
 			seenKustomize[k] = r.Kustofmt
 		}
+	}
+	// The two halves must not drift. A row added without advancing the version
+	// would release under a number that is already published; a version behind
+	// the rows would release a kyaml bump under the previous number. Neither is
+	// visible by reading the file, so it fails at load instead.
+	if CompareVersions(m.Version, m.Current().Kustofmt) < 0 {
+		return fmt.Errorf("version %s is behind the newest release row (%s)", m.Version, m.Current().Kustofmt)
 	}
 	return nil
 }
@@ -164,7 +186,7 @@ func (m *Matrix) Decide(kustomizeVersion, kyamlVersion string) Decision {
 			return d
 		}
 		d.Action = ActionRebuild
-		d.Target = NextPatch(m.Current().Kustofmt)
+		d.Target = NextPatch(m.Version)
 	}
 	return d
 }
@@ -256,5 +278,8 @@ func (m *Matrix) Record(d Decision) {
 			Kyaml:     d.Kyaml,
 			Kustomize: []string{d.Kustomize},
 		})
+		// Advancing the version here, rather than in the caller, is what keeps
+		// the forecast honest: status and apply both reach this line.
+		m.Version = d.Target
 	}
 }

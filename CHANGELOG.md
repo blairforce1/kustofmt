@@ -77,4 +77,8 @@ Which kustomize releases each version matches, generated from
 | 0.1.2 | v0.20.1 | 5.7.1 |
 | 0.1.3 | v0.21.0 | 5.8.0 |
 | 0.1.4 | v0.21.1 | 5.8.1 |
+
+The current release is **0.1.5**, built against kyaml v0.21.1. Each row is the
+release that first linked that kyaml; later releases linking the same kyaml
+emit identical output.
 <!-- compat:end -->

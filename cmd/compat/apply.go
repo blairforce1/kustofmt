@@ -108,7 +108,7 @@ This is a breaking change to kustofmt's output, not a routine bump. Review it:
 go.mod has been left pointing at %s so you can inspect the difference`,
 			d.Kyaml, d.Kustomize, d.Kyaml)
 	default:
-		version = compat.NextMinor(m.Current().Kustofmt)
+		version = compat.NextMinor(m.Version)
 		fmt.Printf("golden corpus changed and the change was accepted: taking a minor version\n")
 		if err := goCmd("test", "./format/", "-update"); err != nil {
 			return err

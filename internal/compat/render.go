@@ -45,6 +45,10 @@ const fileHeader = `# The kustomize compatibility matrix -- the source of truth 
 # shipping that same kyaml, so a repository pinning a kustomize version can pin
 # the kustofmt built from the same library.
 #
+# ` + "`version`" + ` is the release this tree publishes. It is usually the newest row,
+# but a change with no kyaml behind it -- packaging, signing -- advances the
+# version without adding a row, because one row per kyaml is an invariant.
+#
 # Maintained by ` + "`go run ./cmd/compat`" + `; every row is re-derived from upstream by
 # ` + "`make compat-check`" + `. Tracking starts at ` + "`floor`" + ` -- older kustomize releases are
 # deliberately absent rather than accidentally missing.
@@ -65,6 +69,11 @@ func (m *Matrix) sort() {
 
 // Table renders the matrix as Markdown, oldest release first -- the same order
 // as the file, so there is one canonical ordering and nothing to reconcile.
+//
+// The line below the table names the current release, which is not always the
+// newest row: a release with no kyaml behind it advances the version without
+// adding one. It is emitted unconditionally rather than only when the two
+// differ, because a conditional line is a branch to get wrong for no benefit.
 func (m *Matrix) Table() string {
 	var b strings.Builder
 	b.WriteString("| kustofmt | kyaml | kustomize CLI |\n")
@@ -76,6 +85,9 @@ func (m *Matrix) Table() string {
 		}
 		fmt.Fprintf(&b, "| %s | %s | %s |\n", r.Kustofmt, r.Kyaml, versions)
 	}
+	fmt.Fprintf(&b, "\nThe current release is **%s**, built against kyaml %s. Each row is the\n"+
+		"release that first linked that kyaml; later releases linking the same kyaml\n"+
+		"emit identical output.\n", m.Version, m.Current().Kyaml)
 	return b.String()
 }
 
