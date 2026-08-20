@@ -132,3 +132,23 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         KYAML_VERSION: ${{ env.KYAML_VERSION }}
+    # README.md tells people to run this. A release that cannot pass it has
+    # published instructions that do not work, so the job fails rather than
+    # finishing quietly -- the artifacts are already out by this point, and a
+    # red release is how anyone finds out in time to do something about it.
+    #
+    # The second call points Rekor at a dead port. That is the property the
+    # bundle exists for: the detached pair this replaced had to search the
+    # transparency log, and could not be verified without reaching it.
+    - name: Verify the signature just published
+      if: steps.target.outputs.release == 'true'
+      working-directory: dist
+      run: |
+        verify() {
+          cosign verify-blob --bundle checksums.txt.sigstore.json \
+            --certificate-identity-regexp 'https://github.com/blairforce1/kustofmt/.*' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$@" checksums.txt
+        }
+        verify
+        verify --rekor-url http://127.0.0.1:1

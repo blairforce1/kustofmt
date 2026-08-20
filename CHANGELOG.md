@@ -11,6 +11,33 @@ is small.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-21
+
+Nothing about the formatter changed: the output is byte-identical to 0.1.4, and
+this release is still built against kyaml v0.21.1. What changed is how the
+release proves it is ours.
+
+### Changed
+
+- The release is signed into `checksums.txt.sigstore.json`, a Sigstore bundle,
+  replacing the detached `checksums.txt.pem` and `checksums.txt.sig` pair. The
+  bundle carries the transparency-log inclusion proof, so `cosign verify-blob`
+  no longer searches Rekor and no longer fails when Rekor is unreachable. The
+  README documents the new command; releases up to 0.1.4 keep the old pair and
+  the old command.
+- Container image signatures are unchanged and still verify with `cosign verify`.
+
+### Added
+
+- `make sign-check` runs the release's own cosign arguments, read out of
+  `.goreleaser.yaml`, and fails if they do not write the file the config
+  declares. It runs in CI, which previously executed no part of the release
+  pipeline. A `Signing smoke` workflow covers the keyless half on demand.
+- The release workflow verifies what it just published, using the command the
+  README publishes, including with Rekor pointed at a dead port.
+- `compatibility.yaml` carries an explicit `version`, so a release can be cut
+  for a reason kyaml did not cause. This one is the first.
+
 ## [0.1.4] - 2026-08-20
 
 ### Changed
