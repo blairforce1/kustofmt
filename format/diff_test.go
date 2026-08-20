@@ -38,6 +38,31 @@ func TestDiffOutputShape(t *testing.T) {
 	}
 }
 
+// TestDiffHandlesContentResemblingTheNoEOLMarker: the no-final-newline fact used
+// to be recorded by appending a sentinel string to the line text, so a line
+// whose content happened to end with that sentinel was mis-rendered -- the
+// suffix stripped and a spurious "no newline" marker emitted for a file that
+// ended perfectly normally. The fact lives in a struct field now and no content
+// can imitate it.
+func TestDiffHandlesContentResemblingTheNoEOLMarker(t *testing.T) {
+	t.Parallel()
+	const sentinel = "\x00noeol"
+	old := []byte("a: 1\nb: " + sentinel + "\n")
+	new := []byte("a: 2\nb: " + sentinel + "\n")
+
+	d := format.Diff("old", "new", old, new)
+	if strings.Contains(d, `\ No newline at end of file`) {
+		t.Errorf("both files end in a newline, but the diff says otherwise:\n%q", d)
+	}
+	got, err := applyUnified(string(old), d)
+	if err != nil {
+		t.Fatalf("apply: %v\ndiff:\n%q", err, d)
+	}
+	if got != string(new) {
+		t.Errorf("apply mismatch\ngot:  %q\nwant: %q", got, new)
+	}
+}
+
 // TestDiffApplies is the real correctness test: a diff is right when applying
 // it to the old file reproduces the new one. It runs over every fixture, so
 // any hunk header arithmetic error shows up immediately.

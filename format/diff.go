@@ -42,36 +42,45 @@ func Diff(oldName, newName string, old, new []byte) string {
 // has no terminating newline.
 const noEOLMarker = "\\ No newline at end of file"
 
-// noEOLSentinel is appended to the final line of a file that does not end in a
-// newline. Carrying the fact in the line itself means "a: 1" and "a: 1\n"
-// compare as different lines -- which they are -- instead of the difference
-// vanishing and Diff wrongly reporting the files identical. The sentinel is
-// stripped and turned back into a marker line when the hunk is rendered.
-const noEOLSentinel = "\x00noeol"
+// srcLine is one line of a file, together with whether it was the last line of
+// a file that had no terminating newline.
+//
+// The flag has to take part in comparison: "a: 1" and "a: 1\n" are different
+// files, and a differ that called those lines equal would report no difference
+// at all. Keeping it in a field rather than appended to the text means no
+// sentinel string can ever collide with real content -- srcLine is comparable,
+// so == does the right thing for free.
+type srcLine struct {
+	text  string
+	noEOL bool
+}
 
 // splitLines splits into lines without a trailing empty element, so a file
 // ending in a newline does not appear to have a final blank line.
-func splitLines(b []byte) []string {
+func splitLines(b []byte) []srcLine {
 	s := string(b)
 	if s == "" {
 		return nil
 	}
-	if strings.HasSuffix(s, "\n") {
-		return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+	trimmed, hadNewline := strings.CutSuffix(s, "\n")
+	parts := strings.Split(trimmed, "\n")
+	lines := make([]srcLine, len(parts))
+	for i, text := range parts {
+		lines[i] = srcLine{text: text}
 	}
-	lines := strings.Split(s, "\n")
-	lines[len(lines)-1] += noEOLSentinel
+	if !hadNewline {
+		lines[len(lines)-1].noEOL = true
+	}
 	return lines
 }
 
-// writeLine emits one diff line, converting a sentinel back into the marker.
-func writeLine(b *strings.Builder, prefix, line string) {
-	if rest, ok := strings.CutSuffix(line, noEOLSentinel); ok {
-		b.WriteString(prefix + rest + "\n")
+// writeLine emits one diff line, following it with the conventional marker when
+// the line ended a file that had no final newline.
+func writeLine(b *strings.Builder, prefix string, l srcLine) {
+	b.WriteString(prefix + l.text + "\n")
+	if l.noEOL {
 		b.WriteString(noEOLMarker + "\n")
-		return
 	}
-	b.WriteString(prefix + line + "\n")
 }
 
 type opKind int
@@ -84,7 +93,7 @@ const (
 
 type edit struct {
 	kind opKind
-	line string
+	line srcLine
 }
 
 type hunk struct {
@@ -123,7 +132,7 @@ func rng(start, count int) string {
 
 // hunks builds the edit script and groups it into hunks with surrounding
 // context.
-func hunks(old, new []string) []hunk {
+func hunks(old, new []srcLine) []hunk {
 	edits := diffLines(old, new)
 
 	var out []hunk
@@ -202,7 +211,7 @@ func hunks(old, new []string) []hunk {
 // diffLines produces an edit script via longest-common-subsequence, after
 // trimming the common prefix and suffix. For a formatter the changes are
 // usually a few scattered lines, so the trim does most of the work.
-func diffLines(old, new []string) []edit {
+func diffLines(old, new []srcLine) []edit {
 	var pre, post []edit
 
 	i := 0
@@ -237,7 +246,7 @@ func diffLines(old, new []string) []edit {
 }
 
 // lcsEdits walks a longest-common-subsequence table to build the edit script.
-func lcsEdits(old, new []string) []edit {
+func lcsEdits(old, new []srcLine) []edit {
 	n, m := len(old), len(new)
 	if n == 0 && m == 0 {
 		return nil
