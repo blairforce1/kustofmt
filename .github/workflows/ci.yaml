@@ -56,9 +56,15 @@ jobs:
       with:
         go-version-file: go.mod
     - name: Test with race detector and coverage
+      # bash on every platform, including Windows. PowerShell mangles the
+      # -coverprofile=cover.out argument, splitting it so that `.out` arrives as
+      # a package path and the run fails with "no required module provides
+      # package .out" before a single test executes.
+      shell: bash
       run: go test -race -covermode=atomic -coverprofile=cover.out ./...
     - name: Coverage summary
       if: matrix.os == 'ubuntu-latest'
+      shell: bash
       run: go tool cover -func=cover.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
     - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
       if: matrix.os == 'ubuntu-latest'

@@ -1,0 +1,10 @@
+# Line endings are content here, not a local preference.
+#
+# Without this, git on Windows checks the repository out with CRLF, and the
+# golden files stop matching what the formatter emits -- every golden test fails
+# on one platform for a reason that has nothing to do with the formatter.
+* text=auto eol=lf
+
+# Except this one. It is the fixture that proves CRLF input is normalised to LF,
+# so its carriage returns are the point; converting them would test nothing.
+format/testdata/crlf.input.yaml -text
