@@ -82,9 +82,10 @@ composes in a pipe.
 |------|--------|
 | `-l` | List files whose formatting differs. **Exits 1 if any.** This is the check mode for hooks and CI. |
 | `-w` | Write the result back to the file. |
-| `-d` | Print unified diffs instead of rewriting. |
+| `-d` | Print unified diffs instead of rewriting. Exits 0 even when files differ — `-l` is the gate, `-d` is the explanation. |
 | `--include-sops` | Format sops-encrypted files instead of skipping them. |
 | `-version` | Print the version, and the kyaml release that defines the style. |
+| `-h` | Print usage. On stdout, exit 0, so it pipes. |
 
 Exit codes: `0` clean or succeeded, `1` files need formatting (`-l`), `2` an
 operational error — an unreadable file, a parse failure. A parse failure names
@@ -280,6 +281,13 @@ parser as-is. Indentation errors are reported accurately; an unterminated flow
 collection (`[1, 2` with no `]`) is reported one line before the bracket. The
 offset differs by error class, so correcting it would make the accurate cases
 wrong. The filename is always right.
+
+**YAML directives do not survive.** A `%YAML` directive is refused by the
+parser outright (`found incompatible YAML document`), and a `%TAG` shorthand is
+expanded to its verbose form — `!e!thing` is re-emitted as
+`!<tag:example.com,2000:thing>`, which resolves to the same tag but is not what
+you wrote. Neither construct appears in kustomize or Flux output; both are
+listed because a formatter should say where it stops being one.
 
 **CRLF input becomes LF.** A documented choice: mixed line endings are a
 formatting inconsistency like any other, and LF is what the ecosystem emits.
