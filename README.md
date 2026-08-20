@@ -320,6 +320,7 @@ something you have to believe.
 | kustofmt | kyaml | kustomize CLI |
 |----------|-------|---------------|
 | 0.1.0 | v0.19.0 | 5.6.0 |
+| 0.1.1 | v0.20.0 | 5.7.0 |
 <!-- compat:end -->
 
 `kustofmt -version` prints the kyaml it was built against. The table is

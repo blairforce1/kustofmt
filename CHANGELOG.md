@@ -11,6 +11,13 @@ is small.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-20
+
+### Changed
+
+- Built against kyaml v0.20.0, the library shipped by kustomize 5.7.0. The golden corpus is unchanged, so this release emits byte-identical
+  output to its predecessor; only the provenance differs.
+
 ## [0.1.0] - 2026-08-20
 
 ### Added
@@ -41,4 +48,5 @@ Which kustomize releases each version matches, generated from
 | kustofmt | kyaml | kustomize CLI |
 |----------|-------|---------------|
 | 0.1.0 | v0.19.0 | 5.6.0 |
+| 0.1.1 | v0.20.0 | 5.7.0 |
 <!-- compat:end -->
