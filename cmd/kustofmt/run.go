@@ -67,19 +67,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		opts        options
 		showVersion bool
 	)
-	fs := flag.NewFlagSet("kustofmt", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	flags := flag.NewFlagSet("kustofmt", flag.ContinueOnError)
+	flags.SetOutput(stderr)
 	// flag calls Usage for -h and for a malformed flag alike. Those are
 	// different events: one is a request that succeeded and belongs on stdout
 	// where it can be piped or paged, the other is an error. Suppress the
 	// built-in call and print it below, where the two can be told apart.
-	fs.Usage = func() {}
-	fs.BoolVar(&opts.list, "l", false, "list files whose formatting differs")
-	fs.BoolVar(&opts.write, "w", false, "write result to (source) file instead of stdout")
-	fs.BoolVar(&opts.diff, "d", false, "display diffs instead of rewriting files")
-	fs.BoolVar(&opts.includeSOPS, "include-sops", false, "format sops-encrypted files")
-	fs.BoolVar(&showVersion, "version", false, "print version information")
-	if err := fs.Parse(args); err != nil {
+	flags.Usage = func() {}
+	flags.BoolVar(&opts.list, "l", false, "list files whose formatting differs")
+	flags.BoolVar(&opts.write, "w", false, "write result to (source) file instead of stdout")
+	flags.BoolVar(&opts.diff, "d", false, "display diffs instead of rewriting files")
+	flags.BoolVar(&opts.includeSOPS, "include-sops", false, "format sops-encrypted files")
+	flags.BoolVar(&showVersion, "version", false, "print version information")
+	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printUsage(stdout)
 			return exitOK
@@ -95,7 +95,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 
-	paths := fs.Args()
+	paths := flags.Args()
 	if len(paths) == 0 {
 		return runStdin(opts, stdin, stdout, stderr)
 	}
@@ -329,9 +329,10 @@ func describe(err error) error {
 	return err
 }
 
-// collect expands the given paths into a sorted list of YAML files.
-// Directories are walked; explicitly named files are taken as given, whatever
-// their extension, because naming a file is an explicit instruction.
+// collect expands the given paths into a list of YAML files: lexical within
+// each directory, directories in the order the caller gave them, each file
+// listed once however many paths reach it. Explicitly named files are taken as
+// given whatever their extension, because naming a file is an instruction.
 func collect(paths []string) ([]string, error) {
 	var out []string
 	seen := make(map[string]bool)
