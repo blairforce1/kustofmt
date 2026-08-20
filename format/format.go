@@ -62,10 +62,14 @@ func Format(in []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The baseline is derived once and every pass is compared against it:
+	// re-deriving it per pass re-parses a file already parsed, and comparing
+	// pass N against pass N-1 would let a drift accumulate a step at a time.
+	before, verifiable := baseline(in)
 	// Check meaning before stability. A semantics change is both the more
 	// serious failure and the more specific diagnosis, so it should be the
 	// error the user sees when a document manages to trigger both.
-	if err := verifySemantics(in, out); err != nil {
+	if err := verifySemantics(before, verifiable, out); err != nil {
 		return nil, err
 	}
 
@@ -78,7 +82,7 @@ func Format(in []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := verifySemantics(in, next); err != nil {
+		if err := verifySemantics(before, verifiable, next); err != nil {
 			return nil, err
 		}
 		if bytes.Equal(next, out) {
@@ -126,6 +130,15 @@ func formatOnce(in []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// baseline reduces the input to the values every formatted pass must still
+// produce. The second result reports whether that comparison is possible at
+// all: input which does not itself reduce to plain values -- duplicate keys,
+// or aliasing past the decoder's budget -- has nothing to be compared against.
+func baseline(in []byte) ([]any, bool) {
+	v, err := decodeValues(in)
+	return v, err == nil
+}
+
 // verifySemantics checks that formatting changed only presentation.
 //
 // This is not defensive programming for its own sake. The underlying emitter
@@ -138,12 +151,14 @@ func formatOnce(in []byte) ([]byte, error) {
 // it re-emits a value with an extra newline in it. Detecting that and refusing
 // is the difference between a formatter and a silent data-loss bug, and the
 // cost is one extra parse of a file we have already parsed twice.
-func verifySemantics(in, out []byte) error {
-	before, err := decodeValues(in)
-	if err != nil {
-		// The input does not reduce to plain values (duplicate keys, say).
-		// There is nothing to compare against, so do not invent a failure.
-		return nil //nolint:nilerr // deliberate: no comparison is possible
+//
+// When the input is not verifiable the check cannot run and formatting
+// proceeds without it. Inventing a failure would refuse files that are merely
+// unusual; the honest response is to carry on and let the caller say the guard
+// was inoperative if anything else goes wrong. See ErrNotVerifiable.
+func verifySemantics(before []any, verifiable bool, out []byte) error {
+	if !verifiable {
+		return nil
 	}
 	after, err := decodeValues(out)
 	if err != nil {
