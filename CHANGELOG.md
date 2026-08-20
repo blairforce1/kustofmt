@@ -11,7 +11,7 @@ is small.
 
 ## [Unreleased]
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-08-20
 
 ### Added
 
@@ -29,9 +29,16 @@ is small.
 - Output is verified before it is returned — it must decode to the same values
   as the input and be a fixed point — which catches two defects in the
   underlying YAML emitter rather than writing them to disk.
+- Files are replaced atomically, preserving mode and ownership.
+- Built against kyaml v0.19.0, the library shipped by kustomize 5.6.0.
 
-### Compatibility
+## Compatibility
 
-| kustofmt | kyaml | kustomize CLI equivalent |
-|----------|-------|--------------------------|
-| 0.1.0 | v0.21.1 | v5.7.1 |
+Which kustomize releases each version matches, generated from
+[`compatibility.yaml`](compatibility.yaml):
+
+<!-- compat:begin -->
+| kustofmt | kyaml | kustomize CLI |
+|----------|-------|---------------|
+| 0.1.0 | v0.19.0 | 5.6.0 |
+<!-- compat:end -->

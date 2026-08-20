@@ -1,0 +1,17 @@
+# The kustomize compatibility matrix -- the source of truth for the tables in
+# README.md and CHANGELOG.md, which are generated from this file.
+#
+# Each kustofmt release links exactly one kyaml, the library whose emitter
+# defines the output style. `kustomize` lists every kustomize CLI release
+# shipping that same kyaml, so a repository pinning a kustomize version can pin
+# the kustofmt built from the same library.
+#
+# Maintained by `go run ./cmd/compat`; every row is re-derived from upstream by
+# `make compat-check`. Tracking starts at `floor` -- older kustomize releases are
+# deliberately absent rather than accidentally missing.
+floor: 5.6.0
+releases:
+- kustofmt: 0.1.0
+  kyaml: v0.19.0
+  kustomize:
+  - 5.6.0

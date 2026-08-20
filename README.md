@@ -310,15 +310,33 @@ stated here rather than buried.
 
 ## Version compatibility
 
-The style is defined by kyaml, so each release records which kyaml it was built
-against. `kustofmt -version` prints it too.
+kustofmt's output style *is* kyaml's emitter, so every release is built against
+exactly one kyaml version — the one a particular kustomize CLI release ships.
+Pin the kustofmt whose kyaml matches the kustomize you render with, and the
+"emits what kustomize emits" guarantee is something you can check rather than
+something you have to believe.
 
-| kustofmt | kyaml | Equivalent kustomize CLI |
-|----------|-------|--------------------------|
-| 0.1.0 | v0.21.1 | v5.7.1 |
+<!-- compat:begin -->
+| kustofmt | kyaml | kustomize CLI |
+|----------|-------|---------------|
+| 0.1.0 | v0.19.0 | 5.6.0 |
+<!-- compat:end -->
 
-A kyaml bump that changes emitted style is a **breaking change** for kustofmt
-and is versioned accordingly. Semver from day one; the style contract is the API.
+`kustofmt -version` prints the kyaml it was built against. The table is
+generated from [`compatibility.yaml`](compatibility.yaml); CI re-derives every
+row from upstream's own `go.mod`, so a wrong row fails the build rather than
+sitting there looking plausible.
+
+**Reading it.** If you render with kustomize 5.7.1, install kustofmt 0.1.2. If
+your kustomize is not listed, it either predates the tracking floor or has not
+been through the watcher yet — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+**Why a kyaml bump is usually a patch.** A new kyaml only matters if it emits
+different bytes. The golden corpus decides: unchanged means the release is
+observably identical to its predecessor and takes a patch version; changed means
+the output style moved, which is a breaking change to this tool's public API and
+is versioned — and reviewed — as one. Every kyaml release in kustomize v5's
+history so far has left the corpus untouched.
 
 ## Contributing
 

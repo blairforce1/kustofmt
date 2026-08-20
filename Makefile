@@ -6,6 +6,9 @@ PKG            := ./...
 LOCALBIN       := $(CURDIR)/bin
 GOLANGCI_VER   := v2.13.1
 GOLANGCI       := $(LOCALBIN)/golangci-lint
+# Pinned: an unpinned linter means local and CI disagree about what is clean,
+# and the disagreement only shows up as a red build after a tag is cut.
+SHELLCHECK_IMAGE := docker.io/koalaman/shellcheck:v0.11.0
 VERSION        ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 FUZZTIME       ?= 30s
 COVER          := cover.out
@@ -74,6 +77,38 @@ tidy-check: ## Fail if go.mod/go.sum are not tidy
 	@rm -f go.mod.bak go.sum.bak
 	@echo "modules: tidy"
 
+.PHONY: compat-status
+compat-status: ## Show kustomize releases not yet in the compatibility matrix
+	go run ./cmd/compat status
+
+.PHONY: compat-render
+compat-render: ## Regenerate the compatibility tables in README and CHANGELOG
+	go run ./cmd/compat render
+
+.PHONY: compat-check
+compat-check: ## Verify the matrix is correct: go.mod, docs, and every recorded row (needs network)
+	go run ./cmd/compat check
+
+.PHONY: compat-check-complete
+compat-check-complete: ## As compat-check, plus: no published kustomize release is missing
+	@# Only true on main. A tag cut before a kustomize release cannot know about
+	@# it, so release builds run compat-check instead.
+	go run ./cmd/compat check --complete
+
+.PHONY: shellcheck
+shellcheck: ## Lint the shell scripts (pinned; see SHELLCHECK_IMAGE)
+	@runner=$$(command -v docker || command -v podman || true); \
+	if [ -n "$$runner" ]; then \
+		"$$runner" run --rm -v "$(CURDIR):/mnt:ro,z" -w /mnt \
+			$(SHELLCHECK_IMAGE) scripts/*.sh && echo "shellcheck: clean ($(SHELLCHECK_IMAGE))"; \
+	elif command -v shellcheck >/dev/null 2>&1; then \
+		echo "shellcheck: no container runtime; using the system binary, which may"; \
+		echo "            differ from the pinned $(SHELLCHECK_IMAGE)"; \
+		shellcheck scripts/*.sh && echo "shellcheck: clean"; \
+	else \
+		echo "shellcheck: unavailable and no container runtime; skipped"; \
+	fi
+
 .PHONY: selfhost
 selfhost: build ## The formatter's own repository must pass its own formatter
 	@# format/testdata is excluded by design: those files are deliberately not in
@@ -89,10 +124,10 @@ golden: ## Regenerate golden files after an intentional style change
 	@echo "goldens updated -- review the diff before committing: a change here is a breaking change"
 
 .PHONY: ci
-ci: fmt-check vet tidy-check lint test selfhost ## Everything CI runs
+ci: fmt-check vet tidy-check lint shellcheck test selfhost ## Everything CI runs (offline)
 
 .PHONY: release-check
-release-check: ci fuzz ## The fuller pre-release gate
+release-check: ci fuzz compat-check ## The fuller pre-release gate (compat-check needs network)
 
 .PHONY: clean
 clean: ## Remove build and test artifacts
