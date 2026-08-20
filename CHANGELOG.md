@@ -15,29 +15,33 @@ is small.
 
 ### Changed
 
-- Built against kyaml v0.21.1, the library shipped by kustomize 5.8.1. The golden corpus is unchanged, so this release emits byte-identical
-  output to its predecessor; only the provenance differs.
+- Built against kyaml v0.21.1, the library shipped by kustomize 5.8.1.
+  The golden corpus is unchanged, so this release emits byte-identical output
+  to its predecessor; only the provenance differs.
 
 ## [0.1.3] - 2026-08-20
 
 ### Changed
 
-- Built against kyaml v0.21.0, the library shipped by kustomize 5.8.0. The golden corpus is unchanged, so this release emits byte-identical
-  output to its predecessor; only the provenance differs.
+- Built against kyaml v0.21.0, the library shipped by kustomize 5.8.0.
+  The golden corpus is unchanged, so this release emits byte-identical output
+  to its predecessor; only the provenance differs.
 
 ## [0.1.2] - 2026-08-20
 
 ### Changed
 
-- Built against kyaml v0.20.1, the library shipped by kustomize 5.7.1. The golden corpus is unchanged, so this release emits byte-identical
-  output to its predecessor; only the provenance differs.
+- Built against kyaml v0.20.1, the library shipped by kustomize 5.7.1.
+  The golden corpus is unchanged, so this release emits byte-identical output
+  to its predecessor; only the provenance differs.
 
 ## [0.1.1] - 2026-08-20
 
 ### Changed
 
-- Built against kyaml v0.20.0, the library shipped by kustomize 5.7.0. The golden corpus is unchanged, so this release emits byte-identical
-  output to its predecessor; only the provenance differs.
+- Built against kyaml v0.20.0, the library shipped by kustomize 5.7.0.
+  The golden corpus is unchanged, so this release emits byte-identical output
+  to its predecessor; only the provenance differs.
 
 ## [0.1.0] - 2026-08-20
 

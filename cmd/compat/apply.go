@@ -153,13 +153,15 @@ func addChangelogEntry(version string, d compat.Decision, styleChanged bool) err
 		return fmt.Errorf("%s has no %q section to insert below", changelogFile, strings.TrimSpace(anchor))
 	}
 
-	kind := "### Changed\n\n- Built against kyaml " + d.Kyaml + ", the library shipped by kustomize " +
-		d.Kustomize + ". The golden corpus is unchanged, so this release emits byte-identical\n" +
-		"  output to its predecessor; only the provenance differs.\n"
+	kind := "### Changed\n\n" +
+		"- Built against kyaml " + d.Kyaml + ", the library shipped by kustomize " + d.Kustomize + ".\n" +
+		"  The golden corpus is unchanged, so this release emits byte-identical output\n" +
+		"  to its predecessor; only the provenance differs.\n"
 	if styleChanged {
-		kind = "### Changed\n\n- **Output style changed.** Built against kyaml " + d.Kyaml +
-			", the library shipped by\n  kustomize " + d.Kustomize +
-			", whose emitter produces different bytes. The golden corpus records\n  the difference; review it before upgrading.\n"
+		kind = "### Changed\n\n" +
+			"- **Output style changed.** Built against kyaml " + d.Kyaml + ", the library\n" +
+			"  shipped by kustomize " + d.Kustomize + ", whose emitter produces different bytes.\n" +
+			"  The golden corpus records the difference; review it before upgrading.\n"
 	}
 
 	entry := fmt.Sprintf("\n## [%s] - %s\n\n%s", version, time.Now().Format("2006-01-02"), kind)

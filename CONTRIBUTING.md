@@ -68,6 +68,57 @@ exactly that loop.
 - No new dependencies without discussing it first. The dependency list is a
   feature; see the README's note on what kyaml already costs.
 
+## Tracking kustomize releases
+
+kustofmt's output style is kyaml's emitter, so every release is built against
+exactly one kyaml — the one a given kustomize CLI release ships. That mapping
+lives in [`compatibility.yaml`](compatibility.yaml), and the tables in the
+README and this changelog are generated from it.
+
+The mapping is **resolved, never assumed**. `scripts/kyaml-for-kustomize.sh`
+works it out two independent ways — full MVS resolution through the Go
+toolchain, and the `go.mod` upstream published at that tag — and fails if they
+disagree. Deriving it arithmetically does not work: of the ten kustomize v5
+releases checked, four ship a kyaml whose version differs from their `api`
+version, and v5.5.0 ships a kyaml *ahead* of its api.
+
+```sh
+make compat-status    # kustomize releases not yet recorded, and what each needs
+make compat-check     # re-derive every row from upstream (needs network)
+make compat-render    # regenerate the README and CHANGELOG tables
+```
+
+### What the watcher does
+
+`.github/workflows/kustomize-watch.yaml` runs daily. It takes the oldest
+unrecorded kustomize release, resolves its kyaml, and either:
+
+- **records it** against an existing kustofmt release, if some version already
+  links that kyaml — nothing is rebuilt and no version is cut, because the
+  binary that already exists is provably the right one to pin; or
+- **rebuilds** against the new kyaml and prepares the next version.
+
+For a rebuild, the golden corpus decides the version. Unchanged means nothing
+observable moved, so it is a patch. Changed means the output style moved — a
+breaking change to this tool's public API — and the watcher **refuses**, exiting
+non-zero rather than proposing it. That case needs a human:
+
+```sh
+go test ./format/ -run TestGolden        # read the diff
+make golden                              # accept it, then read the diff again
+go run ./cmd/compat apply <version> --allow-style-change
+```
+
+### Reviewing a watcher pull request
+
+1. Check the resolved kyaml against upstream's own `go.mod` — the PR body links
+   to it at the exact tag.
+2. Confirm the golden corpus is untouched. If it is not, the PR should not exist;
+   the apply step is meant to have refused.
+3. Approve the workflow run. Pull requests opened with `GITHUB_TOKEN` start in an
+   approval-required state by design, which is the human checkpoint.
+4. Merge. Merging tags the version and publishes the release.
+
 ## Scope
 
 Please read the non-goals in the README before proposing a feature. In
