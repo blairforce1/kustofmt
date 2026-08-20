@@ -1,0 +1,10 @@
+versions:
+  kubectl: "1.36"
+  kustomize: '5.7.1'
+  plain: 1.36
+  bare: yes
+  quotedBool: "true"
+  emptyString: ""
+  withColon: "a: b"
+  number: 8080
+  stringNumber: "8080"

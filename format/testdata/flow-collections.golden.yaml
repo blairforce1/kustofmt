@@ -1,0 +1,17 @@
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: "1"
+    memory: 256Mi
+args:
+- --v
+- "2"
+- --alsologtostderr
+nested:
+  a:
+    b:
+      c:
+      - 1
+      - 2

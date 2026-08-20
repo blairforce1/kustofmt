@@ -1,0 +1,6 @@
+emptyMap: {}
+emptySeq: []
+nested:
+  alsoEmpty: {}
+  alsoEmptySeq: []
+  notEmpty: {a: 1}

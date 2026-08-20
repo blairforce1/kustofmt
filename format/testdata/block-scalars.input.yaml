@@ -1,0 +1,13 @@
+data:
+  literal: |
+    #!/bin/sh
+    echo "hello   world"
+      indented line
+  literalKeep: |+
+    trailing newlines kept
+
+  literalStrip: |-
+    no trailing newline
+  folded: >
+    some folded
+    text here

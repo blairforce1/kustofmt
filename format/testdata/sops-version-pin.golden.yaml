@@ -1,0 +1,8 @@
+# A version ladder file, not an encrypted file.
+kubectl: "1.35"
+kustomize: "5.7.1"
+# The sops CLI version, pinned as a plain string.
+sops: "3.11.0"
+tools:
+  age: "1.2.1"
+  flux: "2.7.5"

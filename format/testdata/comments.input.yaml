@@ -1,0 +1,16 @@
+# header comment
+# second header line
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  # comment above a key
+  name: app # inline comment
+  labels: {a: b} # inline on a flow map
+data:
+  # comment inside a map
+  key: value
+list:
+  # comment above a sequence item
+  - one
+  - two # inline on an item
+# footer comment

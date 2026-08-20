@@ -1,0 +1,7 @@
+spec:
+  containers:
+    - name: app
+      resources:
+        requests: {cpu: 50m}
+      ports:
+        - containerPort: 8080

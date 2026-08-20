@@ -1,0 +1,46 @@
+# The Kubernetes version ladder - a class fact, pinned in git.
+# platform tests the NEXT version; dev is CURRENT; prod is STABLE (n-1 behind dev).
+# Upgrades roll out progressively: platform first (the cluster nobody misses), soak,
+# then dev, then prod - one PR per rung, each rung is one line in this file.
+#
+# kubectl's client skew is +/-1 minor, and the fleet spans three minors by design -
+# so kubectl pins to the DEV class (the middle rung), the only version that reaches
+# all three. A dev upgrade PR bumps `kubectl:` here in the same diff, always.
+# Enforced by scripts/check-version-ladder.
+#
+# node_image patch versions come from kind's release notes (digest-pin for real rigor).
+kubectl: "1.35"
+# The kustomize CLI pins to what kustomize-controller ACTUALLY renders with - the
+# effective library version after go.mod replace directives, not the version string.
+# (Live example: flux 2.7.5's controller replaces kustomize api v0.21.0 back to
+# v0.20.1 = CLI v5.7.1, dodging the v5.8.0 namespace-propagation regression - so a
+# local 5.8.x renders differently from the cluster.) Chain of authority:
+# AKS pins flux -> flux pins the controller -> the controller's effective library
+# pins this. Discovered and enforced by scripts/check-kustomize-flux-parity.
+kustomize: "5.7.1"
+# The helm CLI is a render tool too (chart authoring, `helm template`/`lint`, values
+# verification) - so it gets a master: the helm library embedded in the DEV rung's
+# flux (helm-controller), which is the AKS-pinned release. Mapping is free:
+# helm.sh/helm/v3 vX.Y.Z in the controller's go.mod IS CLI vX.Y.Z. No skew ladder
+# needed - helm's k8s window is n..n-3, wider than the whole three-rung fleet.
+# Discovered and enforced by scripts/check-helm-flux-parity.
+helm: "3.19.2"
+# The sops CLI encrypts what kustomize-controller must DECRYPT - with the sops
+# library embedded in the controller's go.mod, so that is the master (cross-version
+# sops history is real: the 3.8 MAC-computation change broke older decryptors, and
+# upstream sops is currently minors ahead of the controller's library). age rides
+# the same go.mod: the controller decrypts age recipients with its embedded
+# filippo.io/age; the CLI is needed for age-keygen, one binary = one version.
+# Discovered and enforced by scripts/check-sops-flux-parity.
+sops: "3.11.0"
+age: "1.2.1"
+classes:
+  platform:
+    minor: "1.36"
+    node_image: kindest/node:v1.36.1
+  dev:
+    minor: "1.35"
+    node_image: kindest/node:v1.35.5
+  prod:
+    minor: "1.34"
+    node_image: kindest/node:v1.34.8

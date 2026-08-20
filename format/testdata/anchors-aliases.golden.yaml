@@ -1,0 +1,13 @@
+defaults: &defaults
+  retries: 3
+  timeout: 30s
+dev:
+  <<: *defaults
+  name: dev
+prod:
+  <<: *defaults
+  name: prod
+list: &list
+- a
+- b
+ref: *list

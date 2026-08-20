@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+items:
+  - one
+  - two
+nested:
+  deeper:
+    - a: 1
+      b: 2
+    - a: 3
