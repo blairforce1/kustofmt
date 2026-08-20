@@ -324,6 +324,7 @@ something you have to believe.
 | 0.1.2 | v0.20.1 | 5.7.1 |
 | 0.1.3 | v0.21.0 | 5.8.0 |
 | 0.1.4 | v0.21.1 | 5.8.1 |
+| 0.1.5 | v0.18.1 | 5.5.0 |
 <!-- compat:end -->
 
 `kustofmt -version` prints the kyaml it was built against. The table is

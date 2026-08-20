@@ -31,3 +31,7 @@ releases:
   kyaml: v0.21.1
   kustomize:
   - 5.8.1
+- kustofmt: 0.1.5
+  kyaml: v0.18.1
+  kustomize:
+  - 5.5.0
