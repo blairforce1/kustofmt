@@ -231,8 +231,10 @@ func reportResult(name string, opts options, src, out []byte, stdout, stderr io.
 //
 // The cost is that the file gets a new inode, which breaks any hard link to
 // it. Hard-linked YAML is rare; a truncated manifest in a GitOps repository is
-// expensive. Symlinks are followed rather than replaced, below, because those
-// are not rare at all.
+// expensive. The other two things that hang off an inode are carried across
+// explicitly: symlinks are followed rather than replaced, and ownership is
+// copied onto the replacement, because a new file otherwise belongs to
+// whoever ran the command.
 func writeFile(path string, src, out []byte) error {
 	if bytesEqual(src, out) {
 		return nil
@@ -276,6 +278,11 @@ func writeFile(path string, src, out []byte) error {
 		_ = os.Remove(tmpName)
 	}()
 
+	// Ownership before mode: chown clears the setuid and setgid bits on Linux,
+	// so doing it the other way round would undo the chmod.
+	if err := preserveOwner(tmpName, info); err != nil {
+		return err
+	}
 	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
 		return err
 	}

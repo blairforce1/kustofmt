@@ -292,6 +292,14 @@ listed because a formatter should say where it stops being one.
 **CRLF input becomes LF.** A documented choice: mixed line endings are a
 formatting inconsistency like any other, and LF is what the ecosystem emits.
 
+**`-w` replaces a file rather than overwriting it.** The formatted result is
+written alongside and renamed into place, so an interrupted run can never leave
+a half-written manifest. Mode and ownership are carried across, and a symlink
+is followed rather than replaced, but the file does get a new inode — which
+breaks any hard link to it, and means a process holding it open keeps reading
+the old content until it reopens. Neither is common in a GitOps repository; a
+truncated manifest is expensive enough to be worth the trade.
+
 **The binary is about 12 MB.** kustofmt has exactly **one direct dependency**,
 kyaml — but kyaml brings 13 transitive modules of its own, including
 kube-openapi and protobuf. That is the honest number. Taking a smaller
