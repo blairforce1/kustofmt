@@ -42,6 +42,7 @@ Flags:
 	-d              print unified diffs instead of the formatted file
 	--include-sops  format sops-encrypted files instead of skipping them
 	-version        print version information
+	-h              print this message
 
 Files encrypted with sops are skipped by default: sops computes a MAC over
 the document structure, so reformatting one makes it undecryptable.
@@ -68,13 +69,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	)
 	fs := flag.NewFlagSet("kustofmt", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.Usage = func() { warnf(stderr, "%s", usage) }
+	// flag calls Usage for -h and for a malformed flag alike. Those are
+	// different events: one is a request that succeeded and belongs on stdout
+	// where it can be piped or paged, the other is an error. Suppress the
+	// built-in call and print it below, where the two can be told apart.
+	fs.Usage = func() {}
 	fs.BoolVar(&opts.list, "l", false, "list files whose formatting differs")
 	fs.BoolVar(&opts.write, "w", false, "write result to (source) file instead of stdout")
 	fs.BoolVar(&opts.diff, "d", false, "display diffs instead of rewriting files")
 	fs.BoolVar(&opts.includeSOPS, "include-sops", false, "format sops-encrypted files")
 	fs.BoolVar(&showVersion, "version", false, "print version information")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			printUsage(stdout)
+			return exitOK
+		}
+		// flag has already named the offending argument on stderr.
+		printUsage(stderr)
 		return exitError
 	}
 	if showVersion {
@@ -284,6 +295,12 @@ func writeFile(path string, src, out []byte) error {
 }
 
 func bytesEqual(a, b []byte) bool { return string(a) == string(b) }
+
+// printUsage writes the manual. Which stream it goes to is the caller's call:
+// asked-for help is output, unsolicited help is a diagnostic.
+func printUsage(w io.Writer) {
+	_, _ = io.WriteString(w, usage)
+}
 
 // warnf writes a diagnostic to stderr. Failing to report a failure is not
 // itself recoverable, so the write error is deliberately discarded.

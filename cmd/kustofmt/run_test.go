@@ -483,13 +483,37 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+// TestHelpIsASuccessfulRequest: -h asks a question the tool can answer, so it
+// answers on stdout and exits 0. Sending the manual to stderr with exit 2 makes
+// `kustofmt -h | less` print nothing and any wrapper script think it failed.
+func TestHelpIsASuccessfulRequest(t *testing.T) {
+	for _, arg := range []string{"-h", "-help"} {
+		t.Run(arg, func(t *testing.T) {
+			code, stdout, stderr := exercise(t, "", arg)
+			if code != exitOK {
+				t.Errorf("exit = %d, want %d", code, exitOK)
+			}
+			if !strings.Contains(stdout, "kustofmt [flags] [path ...]") {
+				t.Errorf("stdout = %q, want the usage text", stdout)
+			}
+			if stderr != "" {
+				t.Errorf("stderr = %q, want empty", stderr)
+			}
+		})
+	}
+}
+
 func TestUnknownFlagFails(t *testing.T) {
-	code, _, stderr := exercise(t, "", "-nope")
+	code, stdout, stderr := exercise(t, "", "-nope")
 	if code != exitError {
 		t.Errorf("exit = %d, want %d", code, exitError)
 	}
-	if stderr == "" {
-		t.Error("expected usage output on stderr")
+	if !strings.Contains(stderr, "not defined") || !strings.Contains(stderr, "Usage:") {
+		t.Errorf("stderr = %q, want the bad flag named and the usage text", stderr)
+	}
+	// Unsolicited help is a diagnostic; it must not pollute a caller's pipe.
+	if stdout != "" {
+		t.Errorf("stdout = %q, want empty", stdout)
 	}
 }
 
