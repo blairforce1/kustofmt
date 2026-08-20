@@ -2,7 +2,7 @@ module github.com/blairforce1/kustofmt
 
 go 1.26.0
 
-require sigs.k8s.io/kustomize/kyaml v0.21.0
+require sigs.k8s.io/kustomize/kyaml v0.21.1
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
