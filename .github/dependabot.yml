@@ -1,0 +1,25 @@
+# The style contract is kyaml's emission, so a kyaml bump is a potential
+# breaking change for this tool. These PRs are how the version mapping table in
+# the README and CHANGELOG stays current.
+version: 2
+updates:
+- package-ecosystem: gomod
+  directory: /
+  schedule:
+    interval: weekly
+  commit-message:
+    prefix: deps
+  groups:
+    go-dependencies:
+      patterns:
+      - '*'
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
+  commit-message:
+    prefix: ci
+  groups:
+    actions:
+      patterns:
+      - '*'

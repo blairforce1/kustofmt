@@ -1,0 +1,130 @@
+version: 2
+project_name: kustofmt
+before:
+  hooks:
+  - go mod tidy
+builds:
+- id: kustofmt
+  main: ./cmd/kustofmt
+  binary: kustofmt
+  env:
+  - CGO_ENABLED=0
+  # -trimpath keeps local filesystem paths out of a public artifact.
+  flags:
+  - -trimpath
+  ldflags:
+  - -s -w -X main.version={{.Version}}
+  # Pin the build timestamp to the commit so builds are byte-reproducible.
+  mod_timestamp: '{{ .CommitTimestamp }}'
+  goos:
+  - linux
+  - darwin
+  - windows
+  goarch:
+  - amd64
+  - arm64
+  ignore:
+  - goos: windows
+    goarch: arm64
+archives:
+- id: kustofmt
+  ids:
+  - kustofmt
+  name_template: >-
+    {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+  formats:
+  - tar.gz
+  format_overrides:
+  - goos: windows
+    formats:
+    - zip
+  files:
+  - README.md
+  - LICENSE
+  - NOTICE
+  - CHANGELOG.md
+checksum:
+  name_template: checksums.txt
+sboms:
+- id: archive-sbom
+  artifacts: archive
+# Keyless signing via GitHub OIDC: no key to store, no key to leak. Verifiable
+# against the workflow identity that produced the artifact.
+signs:
+- cmd: cosign
+  certificate: '${artifact}.pem'
+  args:
+  - sign-blob
+  - --output-certificate=${certificate}
+  - --output-signature=${signature}
+  - ${artifact}
+  - --yes
+  artifacts: checksum
+  output: true
+# dockers_v2 builds one multi-platform image and publishes the manifest itself,
+# replacing the deprecated dockers + docker_manifests pair.
+dockers_v2:
+- id: kustofmt
+  ids:
+  - kustofmt
+  dockerfile: Dockerfile
+  images:
+  - ghcr.io/blairforce1/kustofmt
+  tags:
+  - '{{ .Version }}'
+  - latest
+  platforms:
+  - linux/amd64
+  - linux/arm64
+  sbom: true
+  # Annotations land on the manifest; labels land on the image config. Tools
+  # read one or the other, so set both rather than guess.
+  labels:
+    org.opencontainers.image.title: '{{ .ProjectName }}'
+    org.opencontainers.image.description: gofmt for GitOps YAML - kustomize's emitted style as a formatter
+    org.opencontainers.image.version: '{{ .Version }}'
+    org.opencontainers.image.revision: '{{ .FullCommit }}'
+    org.opencontainers.image.created: '{{ .Date }}'
+    org.opencontainers.image.source: '{{ .GitURL }}'
+    org.opencontainers.image.licenses: Apache-2.0
+  annotations:
+    org.opencontainers.image.title: '{{ .ProjectName }}'
+    org.opencontainers.image.description: gofmt for GitOps YAML - kustomize's emitted style as a formatter
+    org.opencontainers.image.version: '{{ .Version }}'
+    org.opencontainers.image.revision: '{{ .FullCommit }}'
+    org.opencontainers.image.created: '{{ .Date }}'
+    org.opencontainers.image.source: '{{ .GitURL }}'
+    org.opencontainers.image.licenses: Apache-2.0
+# An empty `artifacts` targets images built by dockers_v2.
+docker_signs:
+- cmd: cosign
+  artifacts: ''
+  output: true
+  args:
+  - sign
+  - ${artifact}@${digest}
+  - --yes
+changelog:
+  # Release notes come from CHANGELOG.md via --release-notes in the workflow;
+  # this only affects the generated commit list if that is ever absent.
+  use: github
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+    - '^ci:'
+release:
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Style provenance
+
+    The output style is defined by the kyaml release this binary was built
+    against. `kustofmt -version` prints it.
+
+    | kustofmt | kyaml |
+    |----------|-------|
+    | {{ .Version }} | {{ .Env.KYAML_VERSION }} |
+
+    A kyaml bump that changes emitted style is a breaking change for kustofmt.

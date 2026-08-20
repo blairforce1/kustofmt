@@ -1,0 +1,116 @@
+# CI is a backstop, not the source of truth: every job below maps to a Makefile
+# target that runs identically on a laptop. `make ci` is the whole pipeline.
+name: CI
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+# The default token is far more powerful than any job here needs.
+permissions:
+  contents: read
+# Superseded runs on the same ref are pointless; cancelling keeps the badge
+# honest about the current state rather than a stale one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        # go.mod is the single source of truth for the toolchain version.
+        go-version-file: go.mod
+    - name: gofmt
+      run: make fmt-check
+    - name: go vet
+      run: make vet
+    - name: modules tidy
+      run: make tidy-check
+    - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+      with:
+        version: v2.13.1
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - ubuntu-latest
+        - macos-latest
+        - windows-latest
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: go.mod
+    - name: Test with race detector and coverage
+      run: go test -race -covermode=atomic -coverprofile=cover.out ./...
+    - name: Coverage summary
+      if: matrix.os == 'ubuntu-latest'
+      run: go tool cover -func=cover.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+    - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+      if: matrix.os == 'ubuntu-latest'
+      with:
+        files: cover.out
+        fail_ci_if_error: false
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  build:
+    name: Cross-compile
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - goos: linux
+          goarch: amd64
+        - goos: linux
+          goarch: arm64
+        - goos: darwin
+          goarch: amd64
+        - goos: darwin
+          goarch: arm64
+        - goos: windows
+          goarch: amd64
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: go.mod
+    - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+      env:
+        CGO_ENABLED: "0"
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: go build -trimpath -ldflags="-s -w" -o /dev/null ./cmd/kustofmt
+  selfhost:
+    name: Self-hosting
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: go.mod
+    # The formatter's own repository must pass its own formatter, including
+    # these workflow files.
+    - name: kustofmt -l over this repository
+      run: make selfhost
+  fuzz-smoke:
+    name: Fuzz smoke
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: go.mod
+    # A short run on every PR. The long run is `make release-check` before a
+    # tag; this is here to catch a regression that the seed corpus misses.
+    - name: Fuzz for 20s per target
+      run: make fuzz FUZZTIME=20s
