@@ -127,8 +127,14 @@ func runStdin(opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	if !opts.includeSOPS && format.IsSOPS(src) {
 		warnf(stderr, "%s\n", "kustofmt: standard input looks sops-encrypted; skipped (use --include-sops to override)")
-		if _, err := stdout.Write(src); err != nil {
-			return exitError
+		// Filter mode has to emit the document: stdout *is* the output file, and
+		// swallowing the input would truncate whatever the pipe feeds next. In
+		// -l and -d mode stdout is a machine-readable channel -- a list of
+		// names, or a diff -- and a file body has no place in it.
+		if !opts.mode() {
+			if _, err := stdout.Write(src); err != nil {
+				return exitError
+			}
 		}
 		return exitOK
 	}

@@ -215,6 +215,42 @@ func TestSOPSIncludedOnRequest(t *testing.T) {
 	}
 }
 
+// TestSOPSOnStdinRespectsTheOutputChannel: -l promises a list of filenames and
+// -d promises a diff. Echoing the skipped document down either of them puts a
+// file body into a channel a caller is parsing. Filter mode is the one place
+// stdout *is* the file, so that is the one place the passthrough belongs.
+func TestSOPSOnStdinRespectsTheOutputChannel(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "format", "testdata", "sops-secret.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, mode := range []string{"-l", "-d"} {
+		t.Run(mode, func(t *testing.T) {
+			code, stdout, stderr := exercise(t, string(src), mode)
+			if code != exitOK {
+				t.Errorf("exit = %d, want %d", code, exitOK)
+			}
+			if stdout != "" {
+				t.Errorf("%s emitted %d bytes of the document on stdout", mode, len(stdout))
+			}
+			if !strings.Contains(stderr, "sops-encrypted") {
+				t.Errorf("stderr = %q, want a skip notice", stderr)
+			}
+		})
+	}
+
+	t.Run("filter mode still passes it through", func(t *testing.T) {
+		code, stdout, _ := exercise(t, string(src))
+		if code != exitOK {
+			t.Errorf("exit = %d, want %d", code, exitOK)
+		}
+		if stdout != string(src) {
+			t.Error("filter mode must emit the document unchanged")
+		}
+	})
+}
+
 func TestMultipleFilesRequireAMode(t *testing.T) {
 	dir := writeTree(t, map[string]string{"a.yaml": messy, "b.yaml": messy})
 	code, stdout, stderr := exercise(t, "", dir)
