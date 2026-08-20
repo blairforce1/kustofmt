@@ -96,12 +96,12 @@ everything after it.
 ```sh
 #!/bin/sh
 # .git/hooks/pre-commit
-files=$(git diff --cached --name-only --diff-filter=ACM -- '*.yaml' '*.yml')
-[ -z "$files" ] && exit 0
-if ! kustofmt -l $files; then
-    echo "YAML above is not in house style. Run: kustofmt -w $files"
-    exit 1
-fi
+# -z and xargs -0 so a path containing a space is one path, not two.
+git diff --cached --name-only -z --diff-filter=ACM -- '*.yaml' '*.yml' |
+    xargs -0 kustofmt -l || {
+        echo "The YAML above is not in house style. Run kustofmt -w on it."
+        exit 1
+    }
 ```
 
 ### In CI

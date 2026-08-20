@@ -78,9 +78,8 @@ tidy-check: ## Fail if go.mod/go.sum are not tidy
 selfhost: build ## The formatter's own repository must pass its own formatter
 	@# format/testdata is excluded by design: those files are deliberately not in
 	@# house style, because they are the *inputs* that prove the transformation.
-	@files=$$(git ls-files '*.yaml' '*.yml' | grep -v '^format/testdata/'); \
-	if [ -z "$$files" ]; then echo "selfhost: no YAML tracked"; exit 0; fi; \
-	out=$$(./$(BIN) -l $$files); \
+	@out=$$(git ls-files -z '*.yaml' '*.yml' | grep -zv '^format/testdata/' | \
+		xargs -0 -r ./$(BIN) -l); \
 	if [ -n "$$out" ]; then echo "these files need formatting:"; echo "$$out"; exit 1; fi; \
 	echo "selfhost: clean"
 
