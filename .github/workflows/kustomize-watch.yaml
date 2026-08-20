@@ -1,0 +1,127 @@
+# Watch kustomize for new releases and propose the matching kustofmt change.
+#
+# kustofmt's output style is kyaml's emitter, so a kustomize release matters
+# only through the kyaml it ships. This resolves that, then either records the
+# release against an existing kustofmt version or rebuilds against the new
+# library and prepares the next version. The result is always a pull request:
+# nothing reaches a public artifact without a person merging it.
+#
+# One release per run, oldest first, so each PR is a single legible decision.
+name: kustomize watch
+on:
+  schedule:
+  # Daily, off the hour: kustomize does not release often, and a quiet run is
+  # cheap. Drift is the thing being prevented, so cadence beats immediacy.
+  - cron: '17 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: kustomize-watch
+  cancel-in-progress: false
+jobs:
+  watch:
+    name: Check for new kustomize releases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the branch
+      pull-requests: write # open the PR
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: go.mod
+    - name: Find the oldest unrecorded kustomize release
+      id: next
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        version=$(go run ./cmd/compat next)
+        if [ -z "$version" ]; then
+          echo "matrix is up to date with every published kustomize release"
+        else
+          echo "next unrecorded kustomize release: $version"
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - name: Skip if a proposal is already open
+      id: existing
+      if: steps.next.outputs.version != ''
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH: compat/kustomize-${{ steps.next.outputs.version }}
+      run: |
+        if gh pr list --head "$BRANCH" --state open --json number --jq 'length' | grep -qv '^0$'; then
+          echo "a pull request for $BRANCH is already open"
+          echo "open=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "open=false" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Resolve what the release requires
+      id: decide
+      if: steps.next.outputs.version != '' && steps.existing.outputs.open == 'false'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        go run ./cmd/compat decide "${{ steps.next.outputs.version }}" | tee "$RUNNER_TEMP/decision.txt"
+    - name: Apply it
+      id: apply
+      if: steps.next.outputs.version != '' && steps.existing.outputs.open == 'false'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # A golden-corpus change makes this exit non-zero on purpose: the output
+        # style moved, which is a breaking change and not something to decide
+        # unattended. The failure is the signal, and the log says what to do.
+        go run ./cmd/compat apply "${{ steps.next.outputs.version }}"
+    - name: Verify
+      id: verify
+      if: steps.apply.outcome == 'success'
+      run: make ci
+    - name: Open the pull request
+      if: steps.verify.outcome == 'success'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ steps.next.outputs.version }}
+        BRANCH: compat/kustomize-${{ steps.next.outputs.version }}
+      run: |
+        if git diff --quiet && git diff --cached --quiet; then
+          echo "nothing changed; not opening a pull request"
+          exit 0
+        fi
+        git config user.name 'blairforce1'
+        git config user.email 'git@blairforce1.com'
+        git checkout -b "$BRANCH"
+        git add -A
+        git commit -F - <<COMMIT
+        compat: record kustomize $VERSION
+
+        $(cat "$RUNNER_TEMP/decision.txt")
+
+        Prepared by the kustomize watch workflow. make ci passed on this change.
+        COMMIT
+        git push origin "$BRANCH"
+
+        gh pr create \
+          --title "compat: record kustomize $VERSION" \
+          --body "$(printf '%s\n' \
+            "Upstream published kustomize \`$VERSION\`." \
+            "" \
+            '```' \
+            "$(cat "$RUNNER_TEMP/decision.txt")" \
+            '```' \
+            "" \
+            "\`make ci\` passed on this change, including the golden corpus — so" \
+            "kustofmt's output is unchanged and this is a provenance bump, not a" \
+            "style change. A style change would have failed the apply step" \
+            "instead of reaching here." \
+            "" \
+            "**Review:** confirm the resolved kyaml against" \
+            "[kustomize's go.mod](https://github.com/kubernetes-sigs/kustomize/blob/kustomize%2Fv$VERSION/kustomize/go.mod)," \
+            "then merge. Merging tags the version and publishes the release." \
+            "" \
+            "CI on this pull request needs approving to run — pull requests opened" \
+            "with \`GITHUB_TOKEN\` start in that state by design.")" \
+          --base main \
+          --head "$BRANCH"

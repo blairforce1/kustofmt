@@ -32,6 +32,11 @@ jobs:
       run: make vet
     - name: modules tidy
       run: make tidy-check
+    - name: shellcheck
+      # Through make, so CI uses the same pinned image a laptop does. The
+      # runner ships its own shellcheck, and letting that decide what is clean
+      # is how a lint failure first appears after a tag is already cut.
+      run: make shellcheck
     - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
       with:
         version: v2.13.1
@@ -102,6 +107,21 @@ jobs:
     # these workflow files.
     - name: kustofmt -l over this repository
       run: make selfhost
+  compat:
+    name: Compatibility matrix
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: go.mod
+    # Its own job because it reaches the network: it re-derives every row from
+    # upstream's go.mod rather than trusting compatibility.yaml. Kept out of the
+    # lint job so an upstream blip cannot masquerade as a lint failure.
+    - name: Re-derive the matrix from upstream
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: make compat-check-complete
   fuzz-smoke:
     name: Fuzz smoke
     runs-on: ubuntu-latest

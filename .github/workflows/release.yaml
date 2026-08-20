@@ -1,20 +1,38 @@
-# Releases are cut by pushing a v* tag. Everything the workflow publishes is
-# reproducible: -trimpath, a commit-pinned build timestamp, and keyless
-# signatures tied to this workflow's OIDC identity.
+# Releases happen two ways, and both end in the same job.
+#
+#   push a v* tag   a deliberate release; this is how the historical replay of
+#                   kustomize 5.6.0 -> 5.8.1 was cut
+#   merge to main   the version at the matrix head has no tag yet, so this
+#                   creates the tag and releases in the same run
+#
+# The second path tags and releases in ONE job on purpose. A tag pushed with
+# GITHUB_TOKEN does not trigger a `push: tags` workflow -- GitHub suppresses it
+# to prevent recursion -- so splitting the work across two workflows would need
+# a stored personal access token. Doing both here needs no secret at all.
+#
+# Everything published is reproducible: -trimpath, a commit-pinned build
+# timestamp, and keyless signatures tied to this workflow's OIDC identity.
 name: Release
 on:
   push:
+    branches:
+    - main
     tags:
-    - 'v*'
+    - v*
 permissions:
   contents: read
+# Releases must not overlap: they race on the `latest` container tag, and the
+# replay pushes several tags at once. Queue them rather than cancel.
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
     permissions:
       # Narrowed to exactly what each capability needs.
-      contents: write # create the GitHub release
+      contents: write # create the release and, on a main push, the tag
       packages: write # push to ghcr.io
       id-token: write # keyless cosign signing via OIDC
     steps:
@@ -25,36 +43,79 @@ jobs:
     - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
       with:
         go-version-file: go.mod
+    # On a tag push the version is the tag. On a merge to main it is the matrix
+    # head, and there is nothing to do if that version is already out -- which is
+    # every ordinary commit, so this job is usually a fast no-op.
+    - name: Decide whether to release
+      id: target
+      run: |
+        git fetch --tags --force
+        if [ "$GITHUB_REF_TYPE" = tag ]; then
+          version="$GITHUB_REF_NAME"
+          echo "tag push: releasing $version"
+        else
+          version="v$(go run ./cmd/compat version)"
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "main is at $version and that tag exists; nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "main is at $version and it is untagged: releasing"
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "release=true" >> "$GITHUB_OUTPUT"
     # Refuse to publish something that does not pass its own gate.
     - name: Pre-release checks
+      if: steps.target.outputs.release == 'true'
       run: make release-check FUZZTIME=60s
-    - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
-    - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
-    - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
-    - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-    - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+    # Created here rather than in a separate workflow; see the note at the top
+    # about GITHUB_TOKEN not triggering `push: tags`.
+    - name: Tag this commit
+      if: steps.target.outputs.release == 'true' && github.ref_type != 'tag'
+      env:
+        VERSION: ${{ steps.target.outputs.version }}
+      run: |
+        git config user.name 'blairforce1'
+        git config user.email 'git@blairforce1.com'
+        git tag -a "$VERSION" -m "kustofmt $VERSION"
+        git push origin "$VERSION"
+    - if: steps.target.outputs.release == 'true'
+      uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+    - if: steps.target.outputs.release == 'true'
+      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+    - if: steps.target.outputs.release == 'true'
+      uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+    - if: steps.target.outputs.release == 'true'
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+    - if: steps.target.outputs.release == 'true'
+      uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    # The style contract is kyaml's emission, so the release records which
-    # kyaml defined it.
+    # The style contract is kyaml's emission, so the release records which kyaml
+    # defined it.
     - name: Resolve kyaml version
+      if: steps.target.outputs.release == 'true'
       run: echo "KYAML_VERSION=$(./scripts/kyaml-version.sh)" >> "$GITHUB_ENV"
-    - name: Extract release notes for this tag
+    - name: Extract release notes for this version
+      if: steps.target.outputs.release == 'true'
+      env:
+        VERSION: ${{ steps.target.outputs.version }}
       run: |
-        version="${GITHUB_REF_NAME#v}"
+        version="${VERSION#v}"
         awk -v v="$version" '
           $0 ~ "^## \\[" v "\\]" {found=1; next}
           found && /^## \[/ {exit}
           found {print}
         ' CHANGELOG.md > /tmp/release-notes.md
         if [ ! -s /tmp/release-notes.md ]; then
-          echo "::error::CHANGELOG.md has no section for $GITHUB_REF_NAME"
+          echo "::error::CHANGELOG.md has no section for $VERSION"
           exit 1
         fi
         cat /tmp/release-notes.md
-    - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+    - if: steps.target.outputs.release == 'true'
+      uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
       with:
         version: '~> v2'
         args: release --clean --release-notes=/tmp/release-notes.md
