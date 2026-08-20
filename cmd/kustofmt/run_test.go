@@ -313,6 +313,49 @@ func TestSkipsGitAndVendorDirectories(t *testing.T) {
 	}
 }
 
+// TestSymlinkedDirectoryIsWalked: a check mode that examines nothing and exits
+// 0 is indistinguishable from a check mode that passed. os.Stat follows the
+// link and calls it a directory; filepath.WalkDir Lstats its root and calls it
+// a file, so the walk found nothing and said so silently.
+func TestSymlinkedDirectoryIsWalked(t *testing.T) {
+	dir := writeTree(t, map[string]string{"real/a.yaml": messy})
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(filepath.Join(dir, "real"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	code, stdout, stderr := exercise(t, "", "-l", link)
+	if code != exitDiffers {
+		t.Errorf("exit = %d, want %d (stderr: %s)", code, exitDiffers, stderr)
+	}
+	// Reported under the name the user typed, not the far side of the link.
+	want := filepath.Join(link, "a.yaml")
+	if !strings.Contains(stdout, want) {
+		t.Errorf("stdout = %q, want %q", stdout, want)
+	}
+}
+
+// TestSymlinkedDirectoryIsWritableThroughItsLink: the rewritten path has to
+// still address a real file, or -w reports success and writes nothing.
+func TestSymlinkedDirectoryIsWritableThroughItsLink(t *testing.T) {
+	dir := writeTree(t, map[string]string{"real/a.yaml": messy})
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(filepath.Join(dir, "real"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if code, _, stderr := exercise(t, "", "-w", link); code != exitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "real", "a.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != tidy {
+		t.Errorf("file =\n%s\nwant:\n%s", got, tidy)
+	}
+}
+
 func TestNamedFileIsFormattedWhateverItsExtension(t *testing.T) {
 	dir := writeTree(t, map[string]string{"Chart.lock": messy})
 	code, stdout, _ := exercise(t, "", filepath.Join(dir, "Chart.lock"))

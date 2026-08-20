@@ -261,18 +261,28 @@ func collect(paths []string) ([]string, error) {
 			add(p)
 			continue
 		}
-		err = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
+		// os.Stat follows symlinks, so a symlinked directory reaches here --
+		// but filepath.WalkDir Lstats its root, sees a link rather than a
+		// directory, and walks nothing at all. Left alone that makes
+		// `kustofmt -l envs` report success having checked no files, which is
+		// the one thing a check mode must never do. Resolve the root here;
+		// links found *inside* the tree are still not followed.
+		root, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			return nil, err
+		}
+		err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
 			if d.IsDir() {
-				if skipDir(d.Name()) && path != p {
+				if skipDir(d.Name()) && path != root {
 					return filepath.SkipDir
 				}
 				return nil
 			}
 			if isYAML(path) {
-				add(path)
+				add(underRoot(p, root, path))
 			}
 			return nil
 		})
@@ -281,6 +291,21 @@ func collect(paths []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// underRoot reports a walked path under the name the caller actually typed.
+// Walking a symlinked directory means resolving it first, and someone who ran
+// `kustofmt -l envs` wants to read "envs/prod/app.yaml", not the path on the
+// other side of the link.
+func underRoot(given, root, path string) string {
+	if given == root {
+		return path
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return path
+	}
+	return filepath.Join(given, rel)
 }
 
 // skipDir avoids directories whose contents are never hand-maintained YAML.
