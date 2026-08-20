@@ -109,6 +109,28 @@ make golden                              # accept it, then read the diff again
 go run ./cmd/compat apply <version> --allow-style-change
 ```
 
+### Repository settings the watcher needs
+
+`pull-requests: write` in the workflow is necessary but not sufficient. The
+repository must also allow Actions to open pull requests, which is off by
+default:
+
+**Settings → Actions → General → Workflow permissions →
+“Allow GitHub Actions to create and approve pull requests”**
+
+or, equivalently:
+
+```sh
+gh api -X PUT repos/OWNER/REPO/actions/permissions/workflow \
+  -f default_workflow_permissions=read \
+  -F can_approve_pull_request_reviews=true
+```
+
+The default token permission stays `read`; each workflow widens it where it
+needs to. Without the setting the watcher does all its work and then fails at
+the last step with *“GitHub Actions is not permitted to create or approve pull
+requests”*. Forks need it too.
+
 ### Reviewing a watcher pull request
 
 1. Check the resolved kyaml against upstream's own `go.mod` — the PR body links
