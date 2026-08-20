@@ -1,6 +1,9 @@
-# The style contract is kyaml's emission, so a kyaml bump is a potential
-# breaking change for this tool. These PRs are how the version mapping table in
-# the README and CHANGELOG stays current.
+# kyaml is deliberately excluded below. Its version is not a dependency choice:
+# it is the library whose emitter defines kustofmt's output style, chosen to
+# match a specific kustomize release and recorded in compatibility.yaml. The
+# kustomize-watch workflow owns it. A Dependabot bump would put go.mod out of
+# step with the matrix, which the compatibility gate would reject -- producing a
+# pull request that can never pass, every week, forever.
 version: 2
 updates:
 - package-ecosystem: gomod
@@ -9,6 +12,8 @@ updates:
     interval: weekly
   commit-message:
     prefix: deps
+  ignore:
+  - dependency-name: sigs.k8s.io/kustomize/kyaml
   groups:
     go-dependencies:
       patterns:
