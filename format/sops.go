@@ -2,13 +2,18 @@ package format
 
 import (
 	"bytes"
+	"strings"
 
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 // encPrefix marks a value encrypted by sops. The algorithm is part of the
 // payload format, so matching it is far more specific than looking for "ENC".
-var encPrefix = []byte("ENC[AES256_GCM,")
+//
+// A string, because the scan that matters runs over yaml.Node.Value -- once per
+// scalar in the document -- where converting to []byte would allocate on every
+// node. The whole-file scan below converts once and pays for it once.
+const encPrefix = "ENC[AES256_GCM,"
 
 // sopsKeySources are the key-management backends sops records in its metadata.
 // At least one is present in every encrypted file.
@@ -28,7 +33,7 @@ var sopsKeySources = []string{"age", "pgp", "kms", "gcp_kms", "azure_kv", "hc_va
 // contains ENC[AES256_GCM,...] payloads.
 func IsSOPS(in []byte) bool {
 	// Cheap rejection: almost every file in a repository lands here.
-	if !bytes.Contains(in, []byte("sops")) && !bytes.Contains(in, encPrefix) {
+	if !bytes.Contains(in, []byte("sops")) && !bytes.Contains(in, []byte(encPrefix)) {
 		return false
 	}
 	docs, err := parse(in)
@@ -81,7 +86,7 @@ func hasEncryptedValue(n *yaml.Node) bool {
 	if n == nil {
 		return false
 	}
-	if n.Kind == yaml.ScalarNode && bytes.Contains([]byte(n.Value), encPrefix) {
+	if n.Kind == yaml.ScalarNode && strings.Contains(n.Value, encPrefix) {
 		return true
 	}
 	for _, c := range n.Content {
