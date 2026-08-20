@@ -169,12 +169,14 @@ documented command that stops working fails here. It skips unless the cosign on
 your `PATH` is the version `release.yaml` pins — a verdict from a different
 cosign is not a verdict about the release. `make cosign-version` prints the pin.
 
-Keyless signing cannot run on a pull request: it needs `id-token: write`, which
-CI does not have. **Dispatch `Signing smoke` before merging any change to
-signing**, and read the run: it signs with a real identity and then verifies
-using the README's command verbatim, including with Rekor unreachable. It is
-dispatch-only because each run writes a permanent entry to Sigstore's
-public-good transparency log.
+Keyless signing needs `id-token: write`, which the CI workflow deliberately does
+not have, so it lives in `Signing smoke`. That workflow runs automatically on
+pull requests touching `.goreleaser.yaml`, `release.yaml` or `internal/release`,
+and on demand otherwise. It signs with a real identity and verifies using the
+README's command verbatim, including with Rekor unreachable. It is scoped to
+those paths rather than run on everything because each run writes a permanent
+entry to Sigstore's public-good transparency log. A fork's pull request has no
+identity to sign with, so the job skips rather than failing.
 
 Two traps worth knowing:
 

@@ -32,7 +32,8 @@ release proves it is ours.
 - `make sign-check` runs the release's own cosign arguments, read out of
   `.goreleaser.yaml`, and fails if they do not write the file the config
   declares. It runs in CI, which previously executed no part of the release
-  pipeline. A `Signing smoke` workflow covers the keyless half on demand.
+  pipeline. A `Signing smoke` workflow covers the keyless half, on pull requests
+  that touch signing and on demand.
 - The release workflow verifies what it just published, using the command the
   README publishes, including with Rekor pointed at a dead port.
 - `compatibility.yaml` carries an explicit `version`, so a release can be cut

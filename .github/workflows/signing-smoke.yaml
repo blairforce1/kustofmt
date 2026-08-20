@@ -6,18 +6,35 @@
 # whose arguments write nothing, but says nothing about Fulcio, Rekor, or the
 # verification command the README publishes. This job covers the rest.
 #
-# Dispatch only, never on a schedule or a push: keyless signing writes a
-# permanent entry to Sigstore's public-good transparency log. A handful of
-# deliberate runs before a signing change merges is fine; one per pull request
-# would be an imposition on a shared service for no added signal.
+# It runs on pull requests that touch signing, and on demand. Not on every pull
+# request, and never on a schedule: each keyless signature writes a permanent
+# entry to Sigstore's public-good transparency log, so this is scoped to the
+# changes that can actually break signing. Those are rare, and they are exactly
+# the ones where remembering to run a check by hand is how it goes unrun.
+#
+# README.md is deliberately not in the paths below. The command this job runs is
+# read out of it, but a network-free test already holds the two together on
+# every pull request, so a prose edit does not need to reach Rekor to prove it.
 name: Signing smoke
 on:
   workflow_dispatch: {}
+  pull_request:
+    branches:
+    - main
+    paths:
+    - .goreleaser.yaml
+    - .github/workflows/release.yaml
+    - .github/workflows/signing-smoke.yaml
+    - internal/release/**
 permissions:
   contents: read
 jobs:
   keyless:
     name: Keyless sign and verify
+    # A fork's pull request gets no OIDC identity, so there is nothing to sign
+    # with. Skipping says so plainly; the alternative is a red check that means
+    # "you do not work here" rather than "this is broken".
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
