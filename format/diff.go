@@ -10,9 +10,10 @@ import (
 // matching the conventional `diff -u` default.
 const contextLines = 3
 
-// maxDiffCells bounds the LCS table. Beyond it the diff degrades to a whole
-// file replacement, which is still correct output, just less readable. YAML
-// files that large are generated, and nobody reads their diffs line by line.
+// maxDiffCells bounds the LCS table -- at int32 per cell, 16 MB at the limit.
+// Beyond it the diff degrades to a whole file replacement, which is still
+// correct output, just less readable. YAML files that large are generated, and
+// nobody reads their diffs line by line.
 const maxDiffCells = 4 << 20
 
 // Diff renders a unified diff between two versions of a file.
@@ -243,10 +244,17 @@ func lcsEdits(old, new []srcLine) []edit {
 	if n == 0 && m == 0 {
 		return nil
 	}
-	// table[i][j] = LCS length of old[i:] and new[j:]
-	table := make([][]int, n+1)
+	// table[i][j] = LCS length of old[i:] and new[j:]. int32 is ample -- a cell
+	// cannot exceed the line count, which maxDiffCells already bounds well
+	// below 2^31 -- and halves a table that reaches 16 MB at the limit.
+	//
+	// One backing array sliced into rows, rather than n+1 separate
+	// allocations, because at the limit that is two thousand of them.
+	stride := m + 1
+	backing := make([]int32, (n+1)*stride)
+	table := make([][]int32, n+1)
 	for i := range table {
-		table[i] = make([]int, m+1)
+		table[i] = backing[i*stride : (i+1)*stride]
 	}
 	for i := n - 1; i >= 0; i-- {
 		for j := m - 1; j >= 0; j-- {
