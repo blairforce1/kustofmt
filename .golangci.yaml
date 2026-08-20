@@ -1,0 +1,36 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+  - bodyclose
+  - copyloopvar
+  - errorlint
+  - gocritic
+  - misspell
+  - nilerr
+  - noctx
+  - perfsprint
+  - prealloc
+  - revive
+  - unconvert
+  - unparam
+  - usestdlibvars
+  - wastedassign
+  settings:
+    revive:
+      rules:
+      - name: exported
+        # The public API is the product; every exported symbol is documented.
+        severity: error
+  exclusions:
+    rules:
+    # Table-driven tests shadow freely and that is fine.
+    - path: _test\.go
+      linters:
+      - unparam
+      - gocritic
+formatters:
+  enable:
+  - gofmt

@@ -10,3 +10,6 @@ cover.html
 # Inputs the fuzzer finds are committed under format/testdata/fuzz as
 # regression tests, per Go convention. Only the fuzzing cache is transient,
 # and that lives in GOCACHE, not here.
+
+# Locally installed tools (pinned in the Makefile)
+/bin/

@@ -68,7 +68,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	)
 	fs := flag.NewFlagSet("kustofmt", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.Usage = func() { fmt.Fprint(stderr, usage) }
+	fs.Usage = func() { warnf(stderr, "%s", usage) }
 	fs.BoolVar(&opts.list, "l", false, "list files whose formatting differs")
 	fs.BoolVar(&opts.write, "w", false, "write result to (source) file instead of stdout")
 	fs.BoolVar(&opts.diff, "d", false, "display diffs instead of rewriting files")
@@ -78,7 +78,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitError
 	}
 	if showVersion {
-		fmt.Fprintln(stdout, versionString())
+		if _, err := fmt.Fprintln(stdout, versionString()); err != nil {
+			return exitError
+		}
 		return exitOK
 	}
 
@@ -89,11 +91,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	files, err := collect(paths)
 	if err != nil {
-		fmt.Fprintf(stderr, "kustofmt: %v\n", err)
+		warnf(stderr, "kustofmt: %v\n", err)
 		return exitError
 	}
 	if !opts.mode() && len(files) > 1 {
-		fmt.Fprintf(stderr, "kustofmt: %d files match; specify -l, -d or -w\n", len(files))
+		warnf(stderr, "kustofmt: %d files match; specify -l, -d or -w\n", len(files))
 		return exitError
 	}
 
@@ -115,16 +117,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // rejected rather than silently ignored.
 func runStdin(opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 	if opts.write {
-		fmt.Fprintln(stderr, "kustofmt: cannot use -w with standard input")
+		warnf(stderr, "%s\n", "kustofmt: cannot use -w with standard input")
 		return exitError
 	}
 	src, err := io.ReadAll(stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "kustofmt: reading standard input: %v\n", err)
+		warnf(stderr, "kustofmt: reading standard input: %v\n", err)
 		return exitError
 	}
 	if !opts.includeSOPS && format.IsSOPS(src) {
-		fmt.Fprintln(stderr, "kustofmt: standard input looks sops-encrypted; skipped (use --include-sops to override)")
+		warnf(stderr, "%s\n", "kustofmt: standard input looks sops-encrypted; skipped (use --include-sops to override)")
 		if _, err := stdout.Write(src); err != nil {
 			return exitError
 		}
@@ -132,7 +134,7 @@ func runStdin(opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	out, err := format.Format(src)
 	if err != nil {
-		fmt.Fprintf(stderr, "kustofmt: %s: %v\n", stdinName, describe(err))
+		warnf(stderr, "kustofmt: %s: %v\n", stdinName, describe(err))
 		return exitError
 	}
 	return reportResult(stdinName, opts, src, out, stdout, stderr)
@@ -141,23 +143,23 @@ func runStdin(opts options, stdin io.Reader, stdout, stderr io.Writer) int {
 func processFile(path string, opts options, stdout, stderr io.Writer) int {
 	src, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "kustofmt: %v\n", err)
+		warnf(stderr, "kustofmt: %v\n", err)
 		return exitError
 	}
 	if !opts.includeSOPS && format.IsSOPS(src) {
-		fmt.Fprintf(stderr, "kustofmt: %s: sops-encrypted, skipped (use --include-sops to override)\n", path)
+		warnf(stderr, "kustofmt: %s: sops-encrypted, skipped (use --include-sops to override)\n", path)
 		return exitOK
 	}
 	out, err := format.Format(src)
 	if err != nil {
 		// A parse failure names the file and does not stop the walk: one bad
 		// file in a large repository should not hide the state of the rest.
-		fmt.Fprintf(stderr, "kustofmt: %s: %v\n", path, describe(err))
+		warnf(stderr, "kustofmt: %s: %v\n", path, describe(err))
 		return exitError
 	}
 	if opts.write {
 		if err := writeFile(path, src, out); err != nil {
-			fmt.Fprintf(stderr, "kustofmt: %v\n", err)
+			warnf(stderr, "kustofmt: %v\n", err)
 			return exitError
 		}
 	}
@@ -169,14 +171,20 @@ func processFile(path string, opts options, stdout, stderr io.Writer) int {
 func reportResult(name string, opts options, src, out []byte, stdout, stderr io.Writer) int {
 	changed := !bytesEqual(src, out)
 	if opts.list && changed {
-		fmt.Fprintln(stdout, name)
+		if _, err := fmt.Fprintln(stdout, name); err != nil {
+			warnf(stderr, "kustofmt: %v\n", err)
+			return exitError
+		}
 	}
 	if opts.diff && changed {
-		fmt.Fprint(stdout, format.Diff(name+".orig", name, src, out))
+		if _, err := io.WriteString(stdout, format.Diff(name+".orig", name, src, out)); err != nil {
+			warnf(stderr, "kustofmt: %v\n", err)
+			return exitError
+		}
 	}
 	if !opts.mode() {
 		if _, err := stdout.Write(out); err != nil {
-			fmt.Fprintf(stderr, "kustofmt: %v\n", err)
+			warnf(stderr, "kustofmt: %v\n", err)
 			return exitError
 		}
 	}
@@ -201,6 +209,12 @@ func writeFile(path string, src, out []byte) error {
 }
 
 func bytesEqual(a, b []byte) bool { return string(a) == string(b) }
+
+// warnf writes a diagnostic to stderr. Failing to report a failure is not
+// itself recoverable, so the write error is deliberately discarded.
+func warnf(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
 
 // describe adds context to the errors a user is most likely to hit, so the
 // message says what to do rather than only what went wrong.
@@ -280,7 +294,7 @@ func versionString() string {
 	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return fmt.Sprintf("kustofmt %s", v)
+		return "kustofmt " + v
 	}
 	if version == "" && info.Main.Version != "" {
 		v = info.Main.Version
@@ -296,14 +310,14 @@ func versionString() string {
 			}
 		}
 	}
-	out := fmt.Sprintf("kustofmt %s", v)
+	out := "kustofmt " + v
 	if revision != "" {
 		if len(revision) > 12 {
 			revision = revision[:12]
 		}
-		out += fmt.Sprintf(" %s%s", revision, modified)
+		out += " " + revision + modified
 	}
-	return out + fmt.Sprintf("\nkyaml %s", kyamlVersion(info))
+	return out + "\nkyaml " + kyamlVersion(info)
 }
 
 // kyamlVersion reports which kyaml the binary was built against. The style

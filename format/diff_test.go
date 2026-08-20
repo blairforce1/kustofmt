@@ -103,7 +103,7 @@ func TestDiffMatchesSystemDiff(t *testing.T) {
 			if err := os.WriteFile(newPath, new, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			out, _ := exec.Command("diff", "-u", oldPath, newPath).Output()
+			out, _ := exec.CommandContext(t.Context(), "diff", "-u", oldPath, newPath).Output()
 			sysHunks := strings.Count(string(out), "\n@@ ")
 			ourHunks := strings.Count(format.Diff("a", "b", old, new), "\n@@ ")
 			if sysHunks != ourHunks {

@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -115,7 +116,7 @@ func rng(start, count int) string {
 		return fmt.Sprintf("%d,0", start)
 	}
 	if count == 1 {
-		return fmt.Sprintf("%d", start+1)
+		return strconv.Itoa(start + 1)
 	}
 	return fmt.Sprintf("%d,%d", start+1, count)
 }
