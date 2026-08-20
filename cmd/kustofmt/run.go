@@ -154,6 +154,12 @@ func processFile(path string, opts options, stdout, stderr io.Writer) int {
 	if err != nil {
 		// A parse failure names the file and does not stop the walk: one bad
 		// file in a large repository should not hide the state of the rest.
+		//
+		// The position comes from the YAML parser verbatim. It is accurate for
+		// most error classes but reports one line early for unterminated flow
+		// collections, and that offset is not consistent enough to correct
+		// blindly -- adjusting it would break the classes that are already
+		// right. Passing the parser's own words through is the honest option.
 		warnf(stderr, "kustofmt: %s: %v\n", path, describe(err))
 		return exitError
 	}

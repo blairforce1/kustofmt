@@ -359,3 +359,21 @@ func TestSemanticsRefusalLeavesFileAlone(t *testing.T) {
 		t.Error("the file was rewritten despite the refusal")
 	}
 }
+
+// TestParseErrorNamesFileAndPosition: the filename is the part a user needs to
+// act on, and it must always be present. A position is included too, straight
+// from the parser -- see the note in processFile about its accuracy.
+func TestParseErrorNamesFileAndPosition(t *testing.T) {
+	dir := writeTree(t, map[string]string{"broken.yaml": "a: 1\n  b: 2\n"})
+	path := filepath.Join(dir, "broken.yaml")
+	code, _, stderr := exercise(t, "", "-l", path)
+	if code != exitError {
+		t.Errorf("exit = %d, want %d", code, exitError)
+	}
+	if !strings.Contains(stderr, path) {
+		t.Errorf("stderr must name the file, got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "line ") {
+		t.Errorf("stderr should carry a position, got: %s", stderr)
+	}
+}

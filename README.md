@@ -265,6 +265,12 @@ unchanged; the source lines move. Literal (`|`) scalars are untouched.
 **Blank lines between keys are removed.** Machine-emitted YAML does not have
 them, and preserving them is not something the emitter offers.
 
+**Parse-error line numbers can be one line early.** They come from the YAML
+parser as-is. Indentation errors are reported accurately; an unterminated flow
+collection (`[1, 2` with no `]`) is reported one line before the bracket. The
+offset differs by error class, so correcting it would make the accurate cases
+wrong. The filename is always right.
+
 **CRLF input becomes LF.** A documented choice: mixed line endings are a
 formatting inconsistency like any other, and LF is what the ecosystem emits.
 
