@@ -1,0 +1,10 @@
+kustofmt
+Copyright 2026 blairforce1
+
+This product includes software developed at
+The Kubernetes Authors (https://github.com/kubernetes-sigs/kustomize).
+
+kustofmt depends on sigs.k8s.io/kustomize/kyaml, which is licensed under the
+Apache License, Version 2.0. The output style kustofmt produces is defined by
+that library's YAML emitter; kustofmt configures and verifies it, and adds the
+transformations the library does not perform.
