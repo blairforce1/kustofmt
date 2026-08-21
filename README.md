@@ -57,6 +57,31 @@ go install github.com/blairforce1/kustofmt/cmd/kustofmt@latest
 docker run --rm -v "$PWD:/data:ro,z" -w /data ghcr.io/blairforce1/kustofmt:latest -l .
 ```
 
+Check mode is all the image can do directly. It runs as uid 65532 — there is no
+`/etc/passwd` in a `scratch` image to name a user — so it can read your files
+but not write them, and `-w` fails with `permission denied`. Pipe instead, and
+let the host do the writing:
+
+```sh
+# kustofmt is a filter: with no paths it reads stdin and writes stdout.
+for f in $(git ls-files '*.yaml' '*.yml'); do
+    tmp=$(mktemp)
+    docker run --rm -i ghcr.io/blairforce1/kustofmt:0.1.5 < "$f" > "$tmp" &&
+        cat "$tmp" > "$f"   # cat, not mv: keeps the file's own mode and owner
+    rm -f "$tmp"
+done
+```
+
+Encrypted files are safe in that loop: a sops document is passed through
+byte-identically, so copying it back changes nothing. But do not add `-l` or
+`-d` to the pipeline — in those modes stdout is a list of names or a diff rather
+than the document, and redirecting it over the file would empty it.
+
+Per-runtime `--user` flags work too, but the correct value depends on your
+daemon. Rootless docker and podman map you to container uid 0; rootful docker
+maps you to your own uid; and choosing wrong fails exactly like passing no flag
+at all. The pipe needs to know none of that.
+
 Archives, the image, checksums and SBOMs are signed with
 [cosign](https://docs.sigstore.dev/) using keyless GitHub OIDC. To verify:
 
@@ -125,8 +150,36 @@ git diff --cached --name-only -z --diff-filter=ACM -- '*.yaml' '*.yml' |
 # Pin the kustofmt built from the same kyaml your kustomize ships;
 # see the compatibility table below. Image tags carry no leading "v".
 - name: Check YAML formatting
-  run: docker run --rm -v "$PWD:/data:ro,z" -w /data ghcr.io/blairforce1/kustofmt:0.1.2 -l .
+  run: docker run --rm -v "$PWD:/data:ro,z" -w /data ghcr.io/blairforce1/kustofmt:0.1.5 -l .
 ```
+
+That checks the whole tree, which is right until part of the tree is not yours.
+`flux-system/` is rewritten by every `flux bootstrap`, vendored charts by every
+sync, generated manifests by whatever generates them — reformatting those is a
+fight the next regeneration wins, and the gate goes red again on someone else's
+schedule. Scope the run instead:
+
+```yaml
+- name: Check YAML formatting
+  run: |
+    git ls-files -z '*.yaml' '*.yml' ':!:**/flux-system/**' |
+      xargs -0 -r docker run --rm -v "$PWD:/data:ro,z" -w /data \
+        ghcr.io/blairforce1/kustofmt:0.1.5 -l
+```
+
+`:!:` is git's own pathspec exclusion, so the list arrives NUL-separated and
+already filtered — no `grep` to get subtly wrong. A pattern matching
+`flux-system` as text rather than as a path component would also drop a file
+named `flux-system.podmonitor.yaml`, and a gate that quietly stops checking a
+file is worse than one that checks too many. `git ls-files` skips untracked
+scratch files for free, and `xargs` reports a failing gate as 123 rather than
+kustofmt's own 1, so branch on non-zero rather than on the exact code.
+
+There is no ignore file, and there will not be one; `gofmt` does not have one
+either. Which trees are tool-owned is something only the caller knows, so
+scoping is the caller's job — the tool's job is to refuse the files it can prove
+it must not touch, which is what the [sops behaviour](#sops-safety-on-by-default)
+does.
 
 ### As a library
 
