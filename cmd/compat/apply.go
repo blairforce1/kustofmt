@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -12,7 +13,7 @@ import (
 	"github.com/blairforce1/kustofmt/internal/compat"
 )
 
-func cmdApply(args []string) error {
+func cmdApply(stdout io.Writer, args []string) error {
 	allowStyleChange := false
 	var version string
 	for _, a := range args {
@@ -42,16 +43,16 @@ func cmdApply(args []string) error {
 		return err
 	}
 	d := m.Decide(version, kyamlVersion)
-	fmt.Printf("kustomize %s links kyaml %s -> %s\n", d.Kustomize, d.Kyaml, d.Action)
+	printf(stdout, "kustomize %s links kyaml %s -> %s\n", d.Kustomize, d.Kyaml, d.Action)
 
 	switch d.Action {
 	case compat.ActionNone:
-		fmt.Printf("nothing to do: already recorded against kustofmt %s\n", d.Target)
+		printf(stdout, "nothing to do: already recorded against kustofmt %s\n", d.Target)
 		return nil
 	case compat.ActionMatrixOnly:
-		return applyMatrixOnly(m, d)
+		return applyMatrixOnly(stdout, m, d)
 	case compat.ActionRebuild:
-		return applyRebuild(m, d, allowStyleChange)
+		return applyRebuild(stdout, m, d, allowStyleChange)
 	}
 	return fmt.Errorf("unhandled action %q", d.Action)
 }
@@ -59,7 +60,7 @@ func cmdApply(args []string) error {
 // applyMatrixOnly records a kustomize release that ships a kyaml some existing
 // kustofmt release already links. Nothing is rebuilt and no version is cut: the
 // binary that already exists is, provably, the right one to pin.
-func applyMatrixOnly(m *compat.Matrix, d compat.Decision) error {
+func applyMatrixOnly(stdout io.Writer, m *compat.Matrix, d compat.Decision) error {
 	if _, ok := m.ByKyaml(d.Kyaml); !ok {
 		return fmt.Errorf("no release links kyaml %s", d.Kyaml)
 	}
@@ -70,15 +71,15 @@ func applyMatrixOnly(m *compat.Matrix, d compat.Decision) error {
 	if err := renderDocs(m); err != nil {
 		return err
 	}
-	fmt.Printf("recorded: kustofmt %s now also covers kustomize %s (no rebuild, no release)\n",
+	printf(stdout, "recorded: kustofmt %s now also covers kustomize %s (no rebuild, no release)\n",
 		d.Target, d.Kustomize)
 	return nil
 }
 
 // applyRebuild points go.mod at the new kyaml, then lets the golden corpus
 // decide what kind of release this is.
-func applyRebuild(m *compat.Matrix, d compat.Decision, allowStyleChange bool) error {
-	fmt.Printf("bumping go.mod to %s %s\n", kyamlModule, d.Kyaml)
+func applyRebuild(stdout io.Writer, m *compat.Matrix, d compat.Decision, allowStyleChange bool) error {
+	printf(stdout, "bumping go.mod to %s %s\n", kyamlModule, d.Kyaml)
 	if err := goCmd("mod", "edit", "-require="+kyamlModule+"@"+d.Kyaml); err != nil {
 		return err
 	}
@@ -95,7 +96,7 @@ func applyRebuild(m *compat.Matrix, d compat.Decision, allowStyleChange bool) er
 	version := d.Target
 	switch {
 	case !styleChanged:
-		fmt.Printf("golden corpus unchanged: no observable change, taking a patch version\n")
+		printf(stdout, "golden corpus unchanged: no observable change, taking a patch version\n")
 	case !allowStyleChange:
 		return fmt.Errorf(`the golden corpus changed: kyaml %s emits a different style.
 
@@ -109,7 +110,7 @@ go.mod has been left pointing at %s so you can inspect the difference`,
 			d.Kyaml, d.Kustomize, d.Kyaml)
 	default:
 		version = compat.NextMinor(m.Version)
-		fmt.Printf("golden corpus changed and the change was accepted: taking a minor version\n")
+		printf(stdout, "golden corpus changed and the change was accepted: taking a minor version\n")
 		if err := goCmd("test", "./format/", "-update"); err != nil {
 			return err
 		}
@@ -126,7 +127,7 @@ go.mod has been left pointing at %s so you can inspect the difference`,
 	if err := addChangelogEntry(version, d, styleChanged); err != nil {
 		return err
 	}
-	fmt.Printf("prepared kustofmt %s against kyaml %s for kustomize %s\n", version, d.Kyaml, d.Kustomize)
+	printf(stdout, "prepared kustofmt %s against kyaml %s for kustomize %s\n", version, d.Kyaml, d.Kustomize)
 	return nil
 }
 
@@ -170,9 +171,10 @@ func addChangelogEntry(version string, d compat.Decision, styleChanged bool) err
 	return os.WriteFile(changelogFile, []byte(out), 0o644)
 }
 
-// goCmd runs the Go toolchain. Output goes to stderr so that stdout stays
-// clean for callers that parse it.
-func goCmd(args ...string) error {
+// runGoCmd runs the Go toolchain. Output goes to stderr so that stdout stays
+// clean for callers that parse it. Reached through the goCmd variable in
+// main.go, so a test can drive applyRebuild without a module cache.
+func runGoCmd(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", args...)
