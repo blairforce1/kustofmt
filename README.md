@@ -57,6 +57,32 @@ go install github.com/blairforce1/kustofmt/cmd/kustofmt@latest
 docker run --rm -v "$PWD:/data:ro,z" -w /data ghcr.io/blairforce1/kustofmt:latest -l .
 ```
 
+Check mode is all the image can do directly. It runs as uid 65532 — there is no
+`/etc/passwd` in a `scratch` image to name a user — so it can read your files
+but not write them, and `-w` fails with `permission denied`. Pipe instead, and
+let the host do the writing:
+
+```sh
+# kustofmt is a filter: with no paths it reads stdin and writes stdout.
+for f in $(git ls-files '*.yaml' '*.yml'); do
+    tmp=$(mktemp)
+    docker run --rm -i ghcr.io/blairforce1/kustofmt:0.1.5 < "$f" > "$tmp" &&
+        cat "$tmp" > "$f"   # cat, not mv: keeps the file's own mode and owner
+    rm -f "$tmp"
+done
+```
+
+Encrypted files are safe in that loop: a sops document is passed through
+byte-identically, so copying it back changes nothing. But do not add `-l` or
+`-d` to the pipeline — in those modes stdout is a list of names or a diff rather
+than the document, and redirecting it over the file would empty it.
+
+Per-runtime `--user` flags work too, but the correct value depends on your
+daemon. Rootless docker and podman map you to container uid 0; rootful docker
+maps you to your own uid; and choosing wrong fails exactly like passing no flag
+at all. The pipe needs to know none of that.
+
+
 Archives, the image, checksums and SBOMs are signed with
 [cosign](https://docs.sigstore.dev/) using keyless GitHub OIDC. To verify:
 
