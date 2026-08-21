@@ -6,9 +6,14 @@
 # shipping that same kyaml, so a repository pinning a kustomize version can pin
 # the kustofmt built from the same library.
 #
+# `version` is the release this tree publishes. It is usually the newest row,
+# but a change with no kyaml behind it -- packaging, signing -- advances the
+# version without adding a row, because one row per kyaml is an invariant.
+#
 # Maintained by `go run ./cmd/compat`; every row is re-derived from upstream by
 # `make compat-check`. Tracking starts at `floor` -- older kustomize releases are
 # deliberately absent rather than accidentally missing.
+version: 0.1.5
 floor: 5.6.0
 releases:
 - kustofmt: 0.1.0

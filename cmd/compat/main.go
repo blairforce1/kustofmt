@@ -172,6 +172,8 @@ func cmdStatus() error {
 	}
 	cur := m.Current()
 
+	fmt.Printf("release:      kustofmt %s%s\n", m.Version,
+		note(m.Version == cur.Kustofmt, "", "  <-- ahead of the newest row: a change with no kyaml behind it"))
 	fmt.Printf("matrix head:  kustofmt %s  kyaml %s\n", cur.Kustofmt, cur.Kyaml)
 	fmt.Printf("go.mod pin:   kyaml %s%s\n", pinned, note(pinned == cur.Kyaml, "", "  <-- DISAGREES with the matrix head"))
 	fmt.Printf("floor:        kustomize %s\n\n", m.Floor)
@@ -233,14 +235,16 @@ func cmdNext() error {
 	return nil
 }
 
-// cmdVersion prints the version at the matrix head -- the release the current
-// tree would publish. The release workflow uses it to decide what to tag.
+// cmdVersion prints the version the current tree would publish, which the
+// release workflow uses to decide what to tag. Usually the newest matrix row,
+// but not always: a change with no kyaml behind it advances the version without
+// adding a row.
 func cmdVersion() error {
 	m, err := compat.Load(matrixFile)
 	if err != nil {
 		return err
 	}
-	fmt.Println(m.Current().Kustofmt)
+	fmt.Println(m.Version)
 	return nil
 }
 

@@ -95,6 +95,21 @@ compat-check-complete: ## As compat-check, plus: no published kustomize release 
 	@# it, so release builds run compat-check instead.
 	go run ./cmd/compat check --complete
 
+.PHONY: cosign-version
+cosign-version: ## Print the cosign version the release workflow pins
+	@# One source of truth for the pin: release.yaml. CI reads it from here so
+	@# the job that checks the signing arguments installs the cosign the release
+	@# actually uses -- a check run against a different cosign is not a check.
+	@grep -oE 'cosign-release: v[^ ]+' .github/workflows/release.yaml | head -1 | cut -d' ' -f2
+
+.PHONY: sign-check
+sign-check: ## Run .goreleaser.yaml's cosign arguments and check they write what it declares
+	@# `make test` covers this too; this target exists so the result is visible
+	@# rather than folded into the suite, and so CI has something narrow to run
+	@# in the one job that installs cosign. Skips unless the cosign on PATH is
+	@# the pinned one.
+	go test ./internal/release/ -run TestSigning -v
+
 .PHONY: shellcheck
 shellcheck: ## Lint the shell scripts (pinned; see SHELLCHECK_IMAGE)
 	@runner=$$(command -v docker || command -v podman || true); \

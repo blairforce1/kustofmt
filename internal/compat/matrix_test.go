@@ -14,7 +14,8 @@ import (
 // fixture is the shape the real matrix has after the historical replay.
 func fixture() *compat.Matrix {
 	return &compat.Matrix{
-		Floor: "5.6.0",
+		Version: "0.1.2",
+		Floor:   "5.6.0",
 		Releases: []compat.Release{
 			{Kustofmt: "0.1.0", Kyaml: "v0.19.0", Kustomize: []string{"5.6.0"}},
 			{Kustofmt: "0.1.1", Kyaml: "v0.20.0", Kustomize: []string{"5.7.0"}},
@@ -122,12 +123,12 @@ func TestLoadRejectsImpossibleMatrices(t *testing.T) {
 	}{
 		{
 			name: "two releases claiming the same kyaml",
-			yaml: "floor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n- kustofmt: 0.1.1\n  kyaml: v0.19.0\n  kustomize: [5.7.0]\n",
+			yaml: "version: 0.1.1\nfloor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n- kustofmt: 0.1.1\n  kyaml: v0.19.0\n  kustomize: [5.7.0]\n",
 			want: "appears in both",
 		},
 		{
 			name: "one kustomize release in two rows",
-			yaml: "floor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n- kustofmt: 0.1.1\n  kyaml: v0.20.0\n  kustomize: [5.6.0]\n",
+			yaml: "version: 0.1.1\nfloor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n- kustofmt: 0.1.1\n  kyaml: v0.20.0\n  kustomize: [5.6.0]\n",
 			want: "appears in both",
 		},
 		{
@@ -137,13 +138,30 @@ func TestLoadRejectsImpossibleMatrices(t *testing.T) {
 		},
 		{
 			name: "kyaml without a leading v",
-			yaml: "floor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: 0.19.0\n  kustomize: [5.6.0]\n",
+			yaml: "version: 0.1.1\nfloor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: 0.19.0\n  kustomize: [5.6.0]\n",
 			want: "leading v",
 		},
 		{
 			name: "kustofmt with a leading v",
-			yaml: "floor: 5.6.0\nreleases:\n- kustofmt: v0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n",
-			want: "should not carry a leading v",
+			yaml: "version: 0.1.1\nfloor: 5.6.0\nreleases:\n- kustofmt: v0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n",
+			want: "kustofmt \"v0.1.0\" should not carry a leading v",
+		},
+		{
+			name: "no version",
+			yaml: "floor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n",
+			want: "version is required",
+		},
+		{
+			name: "version with a leading v",
+			yaml: "version: v0.1.1\nfloor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n",
+			want: "version \"v0.1.1\" should not carry a leading v",
+		},
+		{
+			// A row added without advancing the version would publish a kyaml
+			// bump under a number that is already released.
+			name: "version behind the newest row",
+			yaml: "version: 0.1.0\nfloor: 5.6.0\nreleases:\n- kustofmt: 0.1.0\n  kyaml: v0.19.0\n  kustomize: [5.6.0]\n- kustofmt: 0.1.1\n  kyaml: v0.20.0\n  kustomize: [5.7.0]\n",
+			want: "version 0.1.0 is behind the newest release row (0.1.1)",
 		},
 	}
 	for _, tc := range tests {
@@ -170,9 +188,49 @@ func TestTable(t *testing.T) {
 		"|----------|-------|---------------|\n" +
 		"| 0.1.0 | v0.19.0 | 5.6.0 |\n" +
 		"| 0.1.1 | v0.20.0 | 5.7.0 |\n" +
-		"| 0.1.2 | v0.20.1 | 5.7.1 |\n"
+		"| 0.1.2 | v0.20.1 | 5.7.1 |\n" +
+		"\nThe current release is **0.1.2**, built against kyaml v0.20.1. Each row is the\n" +
+		"release that first linked that kyaml; later releases linking the same kyaml\n" +
+		"emit identical output.\n"
 	if got := fixture().Table(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestTableNamesAReleaseAheadOfTheRows: after a change with no kyaml behind it
+// the current release is not the newest row, and the table has to say so or a
+// reader pins the superseded version.
+func TestTableNamesAReleaseAheadOfTheRows(t *testing.T) {
+	t.Parallel()
+	m := fixture()
+	m.Version = "0.1.3"
+	got := m.Table()
+	if !strings.Contains(got, "The current release is **0.1.3**, built against kyaml v0.20.1.") {
+		t.Errorf("table does not name the current release:\n%s", got)
+	}
+	if !strings.Contains(got, "| 0.1.2 | v0.20.1 | 5.7.1 |") {
+		t.Errorf("table lost the row the release was built from:\n%s", got)
+	}
+}
+
+// TestDecideCountsFromTheReleaseVersion: with the version ahead of the rows, the
+// next kyaml bump must continue from the version. Counting from the newest row
+// would re-mint a number that is already tagged, and the release workflow would
+// then see the tag, decide there was nothing to do, and skip the release.
+func TestDecideCountsFromTheReleaseVersion(t *testing.T) {
+	t.Parallel()
+	m := fixture()
+	m.Version = "0.1.3" // released for a reason kyaml did not cause
+	d := m.Decide("5.8.0", "v0.21.0")
+	if d.Action != compat.ActionRebuild {
+		t.Fatalf("action = %q, want rebuild", d.Action)
+	}
+	if d.Target != "0.1.4" {
+		t.Errorf("target = %q, want 0.1.4", d.Target)
+	}
+	m.Record(d)
+	if m.Version != "0.1.4" || m.Current().Kustofmt != "0.1.4" {
+		t.Errorf("after Record: version %q, head %q; want both 0.1.4", m.Version, m.Current().Kustofmt)
 	}
 }
 
@@ -268,7 +326,8 @@ func TestSaveWritesHouseStyle(t *testing.T) {
 func TestSaveSortsOutOfOrderInput(t *testing.T) {
 	t.Parallel()
 	m := &compat.Matrix{
-		Floor: "5.6.0",
+		Version: "0.1.10",
+		Floor:   "5.6.0",
 		Releases: []compat.Release{
 			{Kustofmt: "0.1.10", Kyaml: "v0.22.0", Kustomize: []string{"5.10.0", "5.9.0"}},
 			{Kustofmt: "0.1.2", Kyaml: "v0.20.1", Kustomize: []string{"5.7.1"}},
@@ -297,7 +356,8 @@ func TestSaveSortsOutOfOrderInput(t *testing.T) {
 func TestRecordSequence(t *testing.T) {
 	t.Parallel()
 	m := &compat.Matrix{
-		Floor: "5.6.0",
+		Version: "0.1.0",
+		Floor:   "5.6.0",
 		Releases: []compat.Release{
 			{Kustofmt: "0.1.0", Kyaml: "v0.19.0", Kustomize: []string{"5.6.0"}},
 		},
@@ -319,7 +379,12 @@ func TestRecordSequence(t *testing.T) {
 		m.Record(d)
 	}
 	if got := m.Current().Kustofmt; got != "0.1.4" {
-		t.Errorf("final version = %q, want 0.1.4", got)
+		t.Errorf("final row = %q, want 0.1.4", got)
+	}
+	// Record advances the release version alongside the row; if it did not, the
+	// replay would have published every step under 0.1.0.
+	if m.Version != "0.1.4" {
+		t.Errorf("final version = %q, want 0.1.4", m.Version)
 	}
 	if len(m.Releases) != 5 {
 		t.Errorf("got %d releases, want 5", len(m.Releases))

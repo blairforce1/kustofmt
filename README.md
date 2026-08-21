@@ -62,10 +62,25 @@ Archives, the image, checksums and SBOMs are signed with
 [cosign](https://docs.sigstore.dev/) using keyless GitHub OIDC. To verify:
 
 ```sh
-cosign verify-blob --certificate checksums.txt.pem --signature checksums.txt.sig \
+cosign verify-blob --bundle checksums.txt.sigstore.json \
   --certificate-identity-regexp 'https://github.com/blairforce1/kustofmt/.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
+```
+
+The signature is a Sigstore bundle: it carries the transparency-log inclusion
+proof, so verification needs no Rekor lookup and works with no network path to
+one. That command is not illustrative — the release workflow runs it against
+what it just published, and refuses to finish if it fails.
+
+Releases up to 0.1.4 predate the bundle and ship `checksums.txt.pem` and
+`checksums.txt.sig`; verify those with `--certificate` and `--signature` in
+place of `--bundle`. Image signatures are unchanged in every release:
+
+```sh
+cosign verify ghcr.io/blairforce1/kustofmt:0.1.5 \
+  --certificate-identity-regexp 'https://github.com/blairforce1/kustofmt/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 ## Usage
@@ -326,6 +341,10 @@ something you have to believe.
 | 0.1.2 | v0.20.1 | 5.7.1 |
 | 0.1.3 | v0.21.0 | 5.8.0 |
 | 0.1.4 | v0.21.1 | 5.8.1 |
+
+The current release is **0.1.5**, built against kyaml v0.21.1. Each row is the
+release that first linked that kyaml; later releases linking the same kyaml
+emit identical output.
 <!-- compat:end -->
 
 `kustofmt -version` prints the kyaml it was built against. The table is

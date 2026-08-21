@@ -50,13 +50,28 @@ sboms:
   artifacts: archive
 # Keyless signing via GitHub OIDC: no key to store, no key to leak. Verifiable
 # against the workflow identity that produced the artifact.
+#
+# The output is a Sigstore bundle, not the older detached certificate and
+# signature pair. The bundle carries the transparency-log inclusion proof with
+# it, so `cosign verify-blob` needs no Rekor lookup; the detached pair carries
+# no proof, so verification has to go and find the log entry and fails outright
+# when Rekor is unreachable -- a poor property for a tool aimed at CI.
+#
+# --new-bundle-format is stated rather than left to default because cosign v2
+# defaults it off and cosign v3 defaults it on: spelling it out means the pinned
+# cosign and any later one write the same artifact.
+#
+# There is no `certificate:` here on purpose. The flags that wrote one were
+# removed in cosign v3, where passing them is accepted, warned about and
+# ignored -- cosign exits 0 having written nothing, and GoReleaser never checks.
+# internal/release guards this by running these very arguments.
 signs:
 - cmd: cosign
-  certificate: '${artifact}.pem'
+  signature: '${artifact}.sigstore.json'
   args:
   - sign-blob
-  - --output-certificate=${certificate}
-  - --output-signature=${signature}
+  - --bundle=${signature}
+  - --new-bundle-format=true
   - ${artifact}
   - --yes
   artifacts: checksum
@@ -96,6 +111,13 @@ dockers_v2:
     org.opencontainers.image.source: '{{ .GitURL }}'
     org.opencontainers.image.licenses: Apache-2.0
 # An empty `artifacts` targets images built by dockers_v2.
+#
+# Image signatures deliberately stay in the classic format, unlike the blob
+# signature above: cosign v2 has no bundle flags for `sign` at all, and Flux's
+# `verify.provider: cosign` reads the classic sha256-<digest>.sig convention.
+# cosign v3 flips image signing to the new format *by default*, so the day this
+# repository moves to it, this block needs a deliberate --new-bundle-format=false
+# or a deliberate decision to change what consumers verify. Not a side effect.
 docker_signs:
 - cmd: cosign
   artifacts: ''

@@ -1,0 +1,306 @@
+// Package release holds no code. It exists for these tests, which guard the one
+// part of the release pipeline CI otherwise never executes: the cosign
+// invocation in .goreleaser.yaml.
+//
+// That gap is not theoretical. cosign v3 removed --output-certificate and
+// --output-signature; passing them is accepted, warned about and ignored, so
+// cosign exits 0 having written nothing. GoReleaser does not help: its sign
+// pipe registers the signature as an artifact to upload without ever checking
+// the file exists, so the first thing to notice is the release upload, by which
+// point the tag is cut and the image is pushed.
+//
+// The tests read the arguments out of .goreleaser.yaml, and the verification
+// command out of README.md, rather than restating either. A test with the
+// arguments copied into it would have gone on passing while the config said
+// --output-certificate, which is the failure it is here to catch.
+package release_test
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	"sigs.k8s.io/kustomize/kyaml/yaml"
+)
+
+const (
+	configPath   = "../../.goreleaser.yaml"
+	workflowPath = "../../.github/workflows/release.yaml"
+	readmePath   = "../../README.md"
+
+	// keylessEnv gates the half of this file that needs a real OIDC identity,
+	// which exists only inside a workflow with id-token: write. The
+	// signing-smoke workflow sets it; nothing else can.
+	keylessEnv = "KUSTOFMT_SIGN_KEYLESS"
+
+	// outDirEnv names a directory to sign into instead of a temp one that goes
+	// away with the test. The smoke workflow sets it so a later step can
+	// re-verify the same bundle with a different cosign.
+	outDirEnv = "KUSTOFMT_SIGN_OUTDIR"
+)
+
+// signConfig mirrors the fields of a `signs` entry that decide what lands on
+// disk. GoReleaser has many more; these are the ones with a file behind them.
+type signConfig struct {
+	Cmd         string   `yaml:"cmd"`
+	Signature   string   `yaml:"signature"`
+	Certificate string   `yaml:"certificate"`
+	Args        []string `yaml:"args"`
+	Artifacts   string   `yaml:"artifacts"`
+}
+
+type goreleaserConfig struct {
+	Signs []signConfig `yaml:"signs"`
+}
+
+func loadSignConfig(t *testing.T) signConfig {
+	t.Helper()
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg goreleaserConfig
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("%s: %v", configPath, err)
+	}
+	if len(cfg.Signs) != 1 {
+		t.Fatalf("%s: got %d signs entries, want exactly 1", configPath, len(cfg.Signs))
+	}
+	s := cfg.Signs[0]
+	if s.Cmd != "cosign" {
+		t.Fatalf("signs[0].cmd = %q, want cosign", s.Cmd)
+	}
+	// A separate certificate file only exists in the keyless flow, and the flags
+	// that wrote one were removed in cosign v3. The bundle carries the
+	// certificate inside it instead. Refusing here is deliberate: it stops
+	// --output-certificate coming back through a config change nothing else
+	// would catch.
+	if s.Certificate != "" {
+		t.Fatalf("signs[0].certificate is set to %q; the bundle carries the certificate, "+
+			"and cosign v3 removed the flags that write a separate one", s.Certificate)
+	}
+	// GoReleaser's own default, applied when the field is absent. Mirroring it
+	// keeps the test honest about what would actually run.
+	if s.Signature == "" {
+		s.Signature = "${artifact}.sig"
+	}
+	return s
+}
+
+// pinnedCosign reads the cosign version the release workflow installs. Reading
+// it rather than restating it means this test and the release cannot drift, and
+// it matters: cosign's flags move between majors, so a run against a different
+// cosign proves nothing about the release.
+func pinnedCosign(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*cosign-release:\s*(v\S+)\s*$`).FindSubmatch(raw)
+	if m == nil {
+		t.Fatalf("%s: no cosign-release pin found; the release installs an unpinned cosign", workflowPath)
+	}
+	return string(m[1])
+}
+
+// cosignBinary returns the cosign to test with, or skips. Skipping on a version
+// mismatch mirrors how `make shellcheck` treats a system binary that is not the
+// pinned one: a laptop with the wrong version should say so, not produce a
+// verdict CI will contradict.
+func cosignBinary(t *testing.T) string {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("shells out to cosign")
+	}
+	cosign, err := exec.LookPath("cosign")
+	if err != nil {
+		t.Skip("cosign is not installed; see the Signing job in ci.yaml")
+	}
+	out, err := exec.CommandContext(t.Context(), cosign, "version").CombinedOutput()
+	if err != nil {
+		t.Fatalf("cosign version: %v\n%s", err, out)
+	}
+	m := regexp.MustCompile(`GitVersion:\s*(v\S+)`).FindSubmatch(out)
+	if m == nil {
+		t.Fatalf("cannot read a version out of:\n%s", out)
+	}
+	if want := pinnedCosign(t); string(m[1]) != want {
+		t.Skipf("cosign %s is installed but the release pins %s; this test only speaks for the pinned one", m[1], want)
+	}
+	return cosign
+}
+
+// signed runs the configured cosign command over a throwaway checksums file and
+// returns the directory it worked in, the artifact, and the signature path the
+// config named.
+//
+// The file is called checksums.txt because that is what the release signs and
+// what README.md's verify command names; the documented command has to run
+// against it unaltered, or it is not the documented command.
+func signed(t *testing.T, cosign string, keyless bool) (dir, artifact, signature string) {
+	t.Helper()
+	cfg := loadSignConfig(t)
+
+	dir = t.TempDir()
+	if kept := os.Getenv(outDirEnv); kept != "" {
+		if err := os.MkdirAll(kept, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		dir = kept
+	}
+	artifact = filepath.Join(dir, "checksums.txt")
+	if err := os.WriteFile(artifact, []byte("d41d8cd98f00b204e9800998ecf8427e  kustofmt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	signature = strings.ReplaceAll(cfg.Signature, "${artifact}", artifact)
+
+	env := append(os.Environ(), "COSIGN_PASSWORD=")
+	expand := strings.NewReplacer("${artifact}", artifact, "${signature}", signature)
+	args := make([]string, 0, len(cfg.Args)+3)
+	for _, a := range cfg.Args {
+		args = append(args, expand.Replace(a))
+	}
+
+	if !keyless {
+		// An unencrypted throwaway key, generated per-run and discarded with the
+		// temp directory. Everything the config says about *what is written
+		// where* is left exactly as it is; only the identity is swapped.
+		keygen := exec.CommandContext(t.Context(), cosign, "generate-key-pair")
+		keygen.Dir, keygen.Env = dir, env
+		if out, err := keygen.CombinedOutput(); err != nil {
+			t.Fatalf("generate-key-pair: %v\n%s", err, out)
+		}
+		args = append(args, "--key", filepath.Join(dir, "cosign.key"), "--tlog-upload=false")
+	}
+
+	cmd := exec.CommandContext(t.Context(), cosign, args...)
+	cmd.Dir, cmd.Env = dir, env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("cosign %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+
+	// The exact assertion cosign v3 fails against the old flags: it exits 0 and
+	// writes nothing. Fatal rather than an error, because every later check
+	// would only restate it.
+	info, err := os.Stat(signature)
+	if err != nil {
+		t.Fatalf("the config names %s but cosign did not write it, and exited 0\ncosign output:\n%s",
+			filepath.Base(signature), out)
+	}
+	if info.Size() == 0 {
+		t.Fatalf("%s is empty", filepath.Base(signature))
+	}
+	// The bundle carries the inclusion proof with it, which is what lets
+	// verification skip the Rekor lookup the detached pair forces.
+	body, err := os.ReadFile(signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "sigstore.bundle") {
+		t.Fatalf("%s is not a Sigstore bundle; got:\n%.200s", filepath.Base(signature), body)
+	}
+	return dir, artifact, signature
+}
+
+// TestSigningWritesWhatTheConfigDeclares is the lane that runs on every pull
+// request: no OIDC, so a throwaway key stands in for the keyless identity. It
+// can say nothing about Fulcio or Rekor, but it does catch a config whose
+// arguments no longer produce the file it declares -- the class of failure that
+// reached a release unnoticed.
+func TestSigningWritesWhatTheConfigDeclares(t *testing.T) {
+	cosign := cosignBinary(t)
+	dir, artifact, signature := signed(t, cosign, false)
+
+	verify := exec.CommandContext(t.Context(), cosign, "verify-blob",
+		"--key", filepath.Join(dir, "cosign.pub"),
+		"--bundle", signature,
+		"--insecure-ignore-tlog", // this key never reached a transparency log
+		artifact,
+	)
+	verify.Dir = dir
+	verify.Env = append(os.Environ(), "COSIGN_PASSWORD=")
+	if out, err := verify.CombinedOutput(); err != nil {
+		t.Errorf("verify-blob: %v\n%s", err, out)
+	}
+}
+
+// TestKeylessSigningMatchesTheDocumentedVerification is the lane the
+// signing-smoke workflow runs, where a real OIDC identity exists. It signs the
+// way a release signs, then verifies using the command README.md publishes,
+// read out of the file rather than restated -- so instructions that stop
+// working fail here rather than in a stranger's terminal.
+func TestKeylessSigningMatchesTheDocumentedVerification(t *testing.T) {
+	if os.Getenv(keylessEnv) != "1" {
+		t.Skipf("keyless signing needs a workflow OIDC identity; set %s=1 to run", keylessEnv)
+	}
+	cosign := cosignBinary(t)
+	dir, _, _ := signed(t, cosign, true)
+	documented := readmeVerifyCommand(t)
+
+	t.Run("the documented command verifies it", func(t *testing.T) {
+		if out, err := shell(t, dir, documented); err != nil {
+			t.Errorf("README.md's verify command failed: %v\n%s\n%s", err, documented, out)
+		}
+	})
+
+	// The reason for the bundle. The detached pair this replaced had to search
+	// the transparency log, so an unreachable Rekor made a release unverifiable.
+	t.Run("verification needs no Rekor lookup", func(t *testing.T) {
+		offline := documented + " --rekor-url http://127.0.0.1:1"
+		if out, err := shell(t, dir, offline); err != nil {
+			t.Errorf("verification still reaches for Rekor: %v\n%s", err, out)
+		}
+	})
+}
+
+// TestReadmePublishesABundleVerifyCommand needs neither cosign nor a network,
+// so it runs everywhere: it holds the documented command to the format the
+// release actually produces. Without it, the keyless lane above -- which only
+// runs on demand -- would be the sole guard on the instructions strangers
+// follow.
+func TestReadmePublishesABundleVerifyCommand(t *testing.T) {
+	t.Parallel()
+	got := readmeVerifyCommand(t)
+	cfg := loadSignConfig(t)
+	// What the config writes and what the README tells people to verify have to
+	// be the same file.
+	name := filepath.Base(strings.ReplaceAll(cfg.Signature, "${artifact}", "checksums.txt"))
+	for _, want := range []string{"--bundle", name, "checksums.txt", "--certificate-oidc-issuer"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("README.md's verify command is missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "--signature ") || strings.Contains(got, "--certificate ") {
+		t.Errorf("README.md still documents the detached pair:\n%s", got)
+	}
+}
+
+// readmeVerifyCommand extracts the published verify-blob command from README.md.
+func readmeVerifyCommand(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile("(?s)```sh\n(cosign verify-blob .*?)\n```").FindSubmatch(raw)
+	if m == nil {
+		t.Fatalf("%s: no fenced `cosign verify-blob` command to run", readmePath)
+	}
+	return strings.TrimSpace(string(m[1]))
+}
+
+// shell runs a documented command as written, continuations and all, rather
+// than picking it apart into arguments and hoping the pieces still mean the
+// same thing.
+func shell(t *testing.T, dir, command string) ([]byte, error) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "sh", "-c", command)
+	cmd.Dir = dir
+	cmd.Env = os.Environ()
+	return cmd.CombinedOutput()
+}

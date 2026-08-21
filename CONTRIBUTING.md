@@ -88,6 +88,13 @@ make compat-check     # re-derive every row from upstream (needs network)
 make compat-render    # regenerate the README and CHANGELOG tables
 ```
 
+The file also carries a `version`, which is what the release workflow tags. It
+is usually the newest row, and the watcher advances it automatically. Edit it by
+hand only to release something kyaml did not cause — a packaging or signing
+change — which has no row to add, because one row per kyaml is an invariant. It
+may not fall behind the newest row; `compat check` refuses to load a matrix
+where it has.
+
 ### What the watcher does
 
 `.github/workflows/kustomize-watch.yaml` runs daily. It takes the oldest
@@ -140,6 +147,46 @@ requests”*. Forks need it too.
 3. Approve the workflow run. Pull requests opened with `GITHUB_TOKEN` start in an
    approval-required state by design, which is the human checkpoint.
 4. Merge. Merging tags the version and publishes the release.
+
+## Signing
+
+Releases are signed keylessly with cosign, using the GitHub OIDC identity of the
+release workflow. The blob signature is a Sigstore bundle, so verification needs
+no Rekor lookup; the container image signature stays in cosign's classic format,
+because Flux's `verify.provider: cosign` reads that convention.
+
+The whole release pipeline runs in one workflow that CI never executes, which is
+how a signing config that produced no signature could reach a tag unnoticed.
+Three things close that:
+
+```sh
+make sign-check       # run .goreleaser.yaml's own cosign arguments (needs cosign)
+```
+
+`internal/release` reads the arguments out of `.goreleaser.yaml` and the verify
+command out of `README.md` rather than restating either, so a config or a
+documented command that stops working fails here. It skips unless the cosign on
+your `PATH` is the version `release.yaml` pins — a verdict from a different
+cosign is not a verdict about the release. `make cosign-version` prints the pin.
+
+Keyless signing needs `id-token: write`, which the CI workflow deliberately does
+not have, so it lives in `Signing smoke`. That workflow runs automatically on
+pull requests touching `.goreleaser.yaml`, `release.yaml` or `internal/release`,
+and on demand otherwise. It signs with a real identity and verifies using the
+README's command verbatim, including with Rekor unreachable. It is scoped to
+those paths rather than run on everything because each run writes a permanent
+entry to Sigstore's public-good transparency log. A fork's pull request has no
+identity to sign with, so the job skips rather than failing.
+
+Two traps worth knowing:
+
+- Pinning an action does not pin the tool it installs. `cosign-installer` v3
+  installs cosign v2, v4 installs cosign v3, and cosign v3 removed the flags the
+  old config used — accepting them, warning, and writing nothing. Every
+  tool-installing action in `release.yaml` therefore pins its tool as well.
+- GoReleaser's sign pipe never checks that the file it asked cosign for exists.
+  It registers the artifact for upload either way, so a silent no-write surfaces
+  as a failed upload after the tag is cut.
 
 ## Scope
 
