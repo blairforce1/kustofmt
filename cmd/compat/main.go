@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,15 +35,18 @@ const (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "compat: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
+// run takes its streams as arguments so every subcommand can be driven from a
+// test in-process, the same reason cmd/kustofmt's run does. Without it the only
+// way to exercise a command is to run the binary and read what it printed.
+func run(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		usage()
+		usage(stderr)
 		return errors.New("a subcommand is required")
 	}
 	root, err := repoRoot()
@@ -55,30 +59,41 @@ func run(args []string) error {
 
 	switch args[0] {
 	case "status":
-		return cmdStatus()
+		return cmdStatus(stdout)
 	case "next":
-		return cmdNext()
+		return cmdNext(stdout)
 	case "version":
-		return cmdVersion()
+		return cmdVersion(stdout)
 	case "decide":
-		return cmdDecide(args[1:])
+		return cmdDecide(stdout, args[1:])
 	case "apply":
-		return cmdApply(args[1:])
+		return cmdApply(stdout, args[1:])
 	case "render":
-		return cmdRender()
+		return cmdRender(stdout)
 	case "check":
-		return cmdCheck(args[1:])
+		return cmdCheck(stdout, stderr, args[1:])
 	case "-h", "--help", "help":
-		usage()
+		usage(stdout)
 		return nil
 	default:
-		usage()
+		usage(stderr)
 		return fmt.Errorf("unknown subcommand %q", args[0])
 	}
 }
 
-func usage() {
-	fmt.Fprint(os.Stderr, `usage: compat <command> [args]
+// printf writes human-facing narration. A failed write to a closed pipe is not
+// something a maintenance tool can act on, and the alternative is an error
+// check around every line of prose. The two commands whose output a workflow
+// parses -- version and next -- do check, because there an empty read is a
+// wrong answer rather than a missing sentence.
+func printf(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+// usage goes to stdout when it was asked for and to stderr when it accompanies
+// an error, so `compat help` can be piped without the shell mixing streams.
+func usage(w io.Writer) {
+	_, _ = fmt.Fprint(w, `usage: compat <command> [args]
 
   status              list kustomize releases at or above the floor that are
                       not yet recorded
@@ -134,13 +149,28 @@ func script(name string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// kyamlFor resolves which kyaml a kustomize release links.
-func kyamlFor(kustomizeVersion string) (string, error) {
+// Everything this package knows about the world outside the process arrives
+// through these four, and they are variables so a test can substitute them.
+//
+// That is not a testing convenience bolted on: running the real ones is not a
+// test at all, because their answers depend on what upstream has published
+// today. The cases worth checking -- a kustomize release that downgrades kyaml,
+// one whose emitter changes the golden corpus, a matrix that has drifted from
+// go.mod -- either have not happened yet or cannot be made to happen on demand.
+var (
+	kyamlFor          = resolveKyamlFor
+	publishedReleases = listPublishedReleases
+	goModKyaml        = readGoModKyaml
+	goCmd             = runGoCmd
+)
+
+// resolveKyamlFor resolves which kyaml a kustomize release links.
+func resolveKyamlFor(kustomizeVersion string) (string, error) {
 	return script("kyaml-for-kustomize.sh", kustomizeVersion)
 }
 
-// publishedReleases lists kustomize CLI releases at or above the floor.
-func publishedReleases(floor string) ([]string, error) {
+// listPublishedReleases lists kustomize CLI releases at or above the floor.
+func listPublishedReleases(floor string) ([]string, error) {
 	out, err := script("kustomize-releases.sh", floor)
 	if err != nil {
 		return nil, err
@@ -148,8 +178,8 @@ func publishedReleases(floor string) ([]string, error) {
 	return strings.Fields(out), nil
 }
 
-// goModKyaml reports the kyaml this module currently builds against.
-func goModKyaml() (string, error) {
+// readGoModKyaml reports the kyaml this module currently builds against.
+func readGoModKyaml() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-f", "{{.Version}}", kyamlModule)
@@ -161,7 +191,7 @@ func goModKyaml() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func cmdStatus() error {
+func cmdStatus(stdout io.Writer) error {
 	m, err := compat.Load(matrixFile)
 	if err != nil {
 		return err
@@ -172,11 +202,11 @@ func cmdStatus() error {
 	}
 	cur := m.Current()
 
-	fmt.Printf("release:      kustofmt %s%s\n", m.Version,
+	printf(stdout, "release:      kustofmt %s%s\n", m.Version,
 		note(m.Version == cur.Kustofmt, "", "  <-- ahead of the newest row: a change with no kyaml behind it"))
-	fmt.Printf("matrix head:  kustofmt %s  kyaml %s\n", cur.Kustofmt, cur.Kyaml)
-	fmt.Printf("go.mod pin:   kyaml %s%s\n", pinned, note(pinned == cur.Kyaml, "", "  <-- DISAGREES with the matrix head"))
-	fmt.Printf("floor:        kustomize %s\n\n", m.Floor)
+	printf(stdout, "matrix head:  kustofmt %s  kyaml %s\n", cur.Kustofmt, cur.Kyaml)
+	printf(stdout, "go.mod pin:   kyaml %s%s\n", pinned, note(pinned == cur.Kyaml, "", "  <-- DISAGREES with the matrix head"))
+	printf(stdout, "floor:        kustomize %s\n\n", m.Floor)
 
 	published, err := publishedReleases(m.Floor)
 	if err != nil {
@@ -189,19 +219,19 @@ func cmdStatus() error {
 		}
 	}
 	if len(pending) == 0 {
-		fmt.Printf("up to date: all %d published kustomize releases at or above the floor are recorded\n", len(published))
+		printf(stdout, "up to date: all %d published kustomize releases at or above the floor are recorded\n", len(published))
 		return nil
 	}
 	// Decide against a matrix that accumulates as we go: applying these in
 	// order is what actually happens, so the forecast has to model that.
-	fmt.Printf("unhandled kustomize releases (%d), in the order they would be applied:\n", len(pending))
+	printf(stdout, "unhandled kustomize releases (%d), in the order they would be applied:\n", len(pending))
 	for _, k := range pending {
 		ky, err := kyamlFor(k)
 		if err != nil {
 			return err
 		}
 		d := m.Decide(k, ky)
-		fmt.Printf("  %-8s kyaml %-9s %-12s -> kustofmt %s\n", k, ky, d.Action, d.Target)
+		printf(stdout, "  %-8s kyaml %-9s %-12s -> kustofmt %s\n", k, ky, d.Action, d.Target)
 		m.Record(d)
 	}
 	return nil
@@ -217,7 +247,7 @@ func note(cond bool, yes, no string) string {
 // cmdNext prints the oldest unrecorded kustomize release and nothing else, so
 // the watcher can consume it without parsing human-facing output. Empty output
 // with a zero exit means there is nothing to do.
-func cmdNext() error {
+func cmdNext(stdout io.Writer) error {
 	m, err := compat.Load(matrixFile)
 	if err != nil {
 		return err
@@ -228,8 +258,8 @@ func cmdNext() error {
 	}
 	for _, k := range published {
 		if !m.HasKustomize(k) {
-			fmt.Println(k)
-			return nil
+			_, err := fmt.Fprintln(stdout, k)
+			return err
 		}
 	}
 	return nil
@@ -239,16 +269,16 @@ func cmdNext() error {
 // release workflow uses to decide what to tag. Usually the newest matrix row,
 // but not always: a change with no kyaml behind it advances the version without
 // adding a row.
-func cmdVersion() error {
+func cmdVersion(stdout io.Writer) error {
 	m, err := compat.Load(matrixFile)
 	if err != nil {
 		return err
 	}
-	fmt.Println(m.Version)
-	return nil
+	_, err = fmt.Fprintln(stdout, m.Version)
+	return err
 }
 
-func cmdDecide(args []string) error {
+func cmdDecide(stdout io.Writer, args []string) error {
 	if len(args) != 1 {
 		return errors.New("decide needs exactly one kustomize version")
 	}
@@ -261,13 +291,13 @@ func cmdDecide(args []string) error {
 		return err
 	}
 	d := m.Decide(strings.TrimPrefix(args[0], "v"), ky)
-	fmt.Printf("kustomize %s links kyaml %s\n", d.Kustomize, d.Kyaml)
-	fmt.Printf("action:   %s\n", d.Action)
-	fmt.Printf("kustofmt: %s\n", d.Target)
+	printf(stdout, "kustomize %s links kyaml %s\n", d.Kustomize, d.Kyaml)
+	printf(stdout, "action:   %s\n", d.Action)
+	printf(stdout, "kustofmt: %s\n", d.Target)
 	return nil
 }
 
-func cmdRender() error {
+func cmdRender(stdout io.Writer) error {
 	m, err := compat.Load(matrixFile)
 	if err != nil {
 		return err
@@ -277,7 +307,7 @@ func cmdRender() error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%-14s %s\n", f, note(changed, "updated", "already current"))
+		printf(stdout, "%-14s %s\n", f, note(changed, "updated", "already current"))
 	}
 	return compat.Save(matrixFile, m)
 }
@@ -293,7 +323,7 @@ func cmdRender() error {
 // main. A tag cut months ago cannot know about a kustomize released since, and
 // demanding it would make every historical tag fail its own gate the moment
 // upstream ships. It sits behind --complete, which CI passes on main.
-func cmdCheck(args []string) error {
+func cmdCheck(stdout, stderr io.Writer, args []string) error {
 	complete := false
 	for _, a := range args {
 		if a != "--complete" {
@@ -347,9 +377,9 @@ func cmdCheck(args []string) error {
 
 	if !complete {
 		if len(problems) > 0 {
-			return report(problems)
+			return report(stderr, problems)
 		}
-		fmt.Printf("compat: matrix agrees with go.mod, the docs and upstream (%d releases, %d kustomize versions)\n",
+		printf(stdout, "compat: matrix agrees with go.mod, the docs and upstream (%d releases, %d kustomize versions)\n",
 			len(m.Releases), recorded)
 		return nil
 	}
@@ -365,16 +395,16 @@ func cmdCheck(args []string) error {
 		}
 	}
 	if len(problems) > 0 {
-		return report(problems)
+		return report(stderr, problems)
 	}
-	fmt.Printf("compat: matrix agrees with go.mod, the docs and upstream, and records all %d published kustomize releases\n",
+	printf(stdout, "compat: matrix agrees with go.mod, the docs and upstream, and records all %d published kustomize releases\n",
 		len(published))
 	return nil
 }
 
-func report(problems []string) error {
+func report(stderr io.Writer, problems []string) error {
 	for _, p := range problems {
-		fmt.Fprintf(os.Stderr, "  FAIL  %s\n", p)
+		printf(stderr, "  FAIL  %s\n", p)
 	}
 	return fmt.Errorf("%d compatibility problem(s)", len(problems))
 }
