@@ -62,17 +62,15 @@ jobs:
       # package .out" before a single test executes.
       shell: bash
       run: go test -race -covermode=atomic -coverprofile=cover.out ./...
+    # The whole of the coverage reporting. It was previously also uploaded to a
+    # third-party service, which silently rejected every upload for want of a
+    # token that was never set -- a green tick over a failed request, for the
+    # life of the repository. The run's own summary page needs no account, no
+    # secret and no uptime but GitHub's.
     - name: Coverage summary
       if: matrix.os == 'ubuntu-latest'
       shell: bash
       run: go tool cover -func=cover.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
-    - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-      if: matrix.os == 'ubuntu-latest'
-      with:
-        files: cover.out
-        fail_ci_if_error: false
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   build:
     name: Cross-compile
     runs-on: ubuntu-latest

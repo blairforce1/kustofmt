@@ -3,7 +3,6 @@
 [![CI](https://github.com/blairforce1/kustofmt/actions/workflows/ci.yaml/badge.svg)](https://github.com/blairforce1/kustofmt/actions/workflows/ci.yaml)
 [![Release](https://github.com/blairforce1/kustofmt/actions/workflows/release.yaml/badge.svg)](https://github.com/blairforce1/kustofmt/actions/workflows/release.yaml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/blairforce1/kustofmt.svg)](https://pkg.go.dev/github.com/blairforce1/kustofmt)
-[![Go Report Card](https://goreportcard.com/badge/github.com/blairforce1/kustofmt)](https://goreportcard.com/report/github.com/blairforce1/kustofmt)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 **gofmt for GitOps YAML — kustomize's emitted style as a formatter.**
