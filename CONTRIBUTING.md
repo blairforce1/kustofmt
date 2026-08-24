@@ -14,7 +14,8 @@ make ci         # everything CI runs, in the same order
 
 `make help` lists every target. There is nothing CI does that these targets do
 not, which is the point: if `make ci` is green locally, the pipeline should be
-green too.
+green too. If you are going to commit, run `make hooks` once as well — see
+[Commit messages](#commit-messages).
 
 The lanes, when you want something faster or more thorough:
 
@@ -62,11 +63,74 @@ exactly that loop.
 ## Pull requests
 
 - Small and focused. One logical change per PR.
-- Conventional prefixes on commits (`format:`, `cmd/kustofmt:`, `docs:`, `ci:`).
+- Commit subjects follow the convention below.
 - Update `CHANGELOG.md` under `Unreleased` in the same PR.
 - `make ci` green before you push.
 - No new dependencies without discussing it first. The dependency list is a
   feature; see the README's note on what kyaml already costs.
+
+## Commit messages
+
+Go's convention — `package: description` — and not Conventional Commits. The
+prefix is a package path for code, and a category otherwise:
+
+| Prefix | Covers |
+|--------|--------|
+| `format:` | `format/` |
+| `cmd/kustofmt:` | the CLI |
+| `compat:` | `cmd/compat` and `internal/compat` |
+| `release:` | `internal/release`, `.goreleaser.yaml`, `release.yaml` |
+| `docs:` | README, CONTRIBUTING, CHANGELOG and the rest |
+| `ci:` | workflows and Dependabot config |
+| `build:` | Makefile, Dockerfile, scripts |
+| `test:` | test-only changes |
+| `deps:` | Dependabot's Go module updates |
+
+The description is lowercase and imperative — "add", not "added" or "Adds" —
+with no trailing period, and the whole subject is at most 72 characters. A body
+after a blank line is welcome and usually warranted; this repository explains
+*why* at length, and a commit message is the right place to do it.
+
+`scripts/check-commit-subject.sh` is the only place that rule is written down.
+Two callers share it:
+
+```sh
+make hooks           # once: installs the commit-msg hook via core.hooksPath
+make commit-check    # what CI runs, over origin/main..HEAD
+```
+
+`make hooks` sets `core.hooksPath`, which **replaces** `.git/hooks` — any hook
+you keep there stops running. Undo it with `git config --unset core.hooksPath`.
+
+The hook is a convenience and never the gate. CI is authoritative, because a
+fork has no hooks, `--no-verify` skips them, and neither Dependabot nor the
+kustomize watcher runs them at all — both commit through the API. It is worth
+installing anyway: commits here are signed, so amending a pushed subject means
+re-signing it.
+
+### Why not Conventional Commits
+
+A fair question, and the answer is not "we prefer the other one".
+
+`release-please` and its relatives derive the next version from commit
+messages. This repository derives it from a test. When the watcher rebuilds
+against a new kyaml, `cmd/compat` runs the golden corpus: unchanged means
+nothing observable moved, so the release is a patch; changed means the output
+style moved, which is a breaking change to this tool's public API, and the
+watcher refuses rather than deciding that on its own. A commit message is
+written *before* that test runs, so it could only ever carry a guess where
+`compatibility.yaml` carries a measurement.
+
+The rest follows from that. `compatibility.yaml` already owns the version,
+`cmd/compat` already writes the CHANGELOG section and the generated tables, and
+`release.yaml` already tags on merge — the whole feature set, with a bump rule
+Conventional Commits cannot express. Adopting it would mean contesting all
+three for no gain, and trading hand-written release notes for a list of commit
+subjects.
+
+There is also a smaller reason. Go's convention is the ecosystem's, and this is
+a tool whose entire argument is that a style should be adopted from its
+ecosystem rather than invented here.
 
 ## Tracking kustomize releases
 

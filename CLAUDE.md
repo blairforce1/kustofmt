@@ -126,8 +126,15 @@ skips unless the cosign on `PATH` matches the pin in `release.yaml`.
 
 ## Conventions
 
-- Commit prefixes are package-scoped: `format:`, `cmd/kustofmt:`, `compat:`,
-  `docs:`, `ci:`.
+- Commit subjects are Go-style (`package: description`), **not** Conventional
+  Commits — `format:`, `cmd/kustofmt:`, `compat:`, `release:`, `docs:`, `ci:`,
+  `build:`, `test:`, `deps:`; lowercase imperative description, no trailing
+  period, 72 characters. `scripts/check-commit-subject.sh` is the enforced
+  definition — do not restate the rule anywhere else. `make hooks` installs it
+  as a commit-msg hook; `make commit-check` is what CI runs. CONTRIBUTING.md
+  records why release-please does not fit: the version comes from
+  `compatibility.yaml` and the bump size from the golden corpus, neither of
+  which a commit message can know.
 - Update `CHANGELOG.md` under `Unreleased` in the same change.
 - Comments here explain *why*, at length, and several encode a bug that was
   actually hit. Match that density; don't strip them.

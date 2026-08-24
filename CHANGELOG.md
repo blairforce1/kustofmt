@@ -11,6 +11,21 @@ is small.
 
 ## [Unreleased]
 
+### Added
+
+- `make commit-check` validates commit subjects against the repository's
+  convention, and `make hooks` installs the same check as a `commit-msg` hook.
+  `scripts/check-commit-subject.sh` is the single definition both use, so a
+  local verdict and a CI verdict cannot disagree.
+
+### Changed
+
+- CONTRIBUTING.md documents the commit convention in full, and records why it
+  is Go's `package: description` rather than Conventional Commits: the release
+  version comes from `compatibility.yaml` and the bump size from the golden
+  corpus, so a commit message has nothing to decide. Nothing about the
+  formatter changed.
+
 ## [0.1.5] - 2026-08-21
 
 Nothing about the formatter changed: the output is byte-identical to 0.1.4, and
