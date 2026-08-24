@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Reject a commit whose subject does not match the convention.
+#
+# commit-msg is the right hook for this: it receives the message file as $1.
+# pre-commit runs before a message exists, so it cannot see one.
+#
+# This is a convenience, not the gate. CI runs `make commit-check` over the
+# whole pull request, because hooks are local config: a fork will not have
+# them, --no-verify bypasses them, and neither Dependabot nor the kustomize
+# watcher runs them at all -- both commit through the API.
+#
+# Install with `make hooks`. It exists mainly because this repository signs its
+# commits, so amending a pushed subject means re-signing it.
+set -euo pipefail
+exec "$(dirname "$0")/../check-commit-subject.sh" "$1"

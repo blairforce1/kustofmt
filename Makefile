@@ -9,6 +9,12 @@ GOLANGCI       := $(LOCALBIN)/golangci-lint
 # Pinned: an unpinned linter means local and CI disagree about what is clean,
 # and the disagreement only shows up as a red build after a tag is cut.
 SHELLCHECK_IMAGE := docker.io/koalaman/shellcheck:v0.11.0
+# Both globs. The commit-msg hook has no .sh extension -- git requires that
+# exact name -- and an unlinted hook is how one quietly stops working.
+SHELL_SOURCES  := scripts/*.sh scripts/hooks/*
+# The ref a pull request is measured against. Override for a local check:
+# `make commit-check COMMIT_BASE=HEAD~5`.
+COMMIT_BASE    ?= origin/main
 VERSION        ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 FUZZTIME       ?= 30s
 COVER          := cover.out
@@ -115,14 +121,39 @@ shellcheck: ## Lint the shell scripts (pinned; see SHELLCHECK_IMAGE)
 	@runner=$$(command -v docker || command -v podman || true); \
 	if [ -n "$$runner" ]; then \
 		"$$runner" run --rm -v "$(CURDIR):/mnt:ro,z" -w /mnt \
-			$(SHELLCHECK_IMAGE) scripts/*.sh && echo "shellcheck: clean ($(SHELLCHECK_IMAGE))"; \
+			$(SHELLCHECK_IMAGE) $(SHELL_SOURCES) && echo "shellcheck: clean ($(SHELLCHECK_IMAGE))"; \
 	elif command -v shellcheck >/dev/null 2>&1; then \
 		echo "shellcheck: no container runtime; using the system binary, which may"; \
 		echo "            differ from the pinned $(SHELLCHECK_IMAGE)"; \
-		shellcheck scripts/*.sh && echo "shellcheck: clean"; \
+		shellcheck $(SHELL_SOURCES) && echo "shellcheck: clean"; \
 	else \
 		echo "shellcheck: unavailable and no container runtime; skipped"; \
 	fi
+
+.PHONY: commit-check
+commit-check: ## Check commit subjects on COMMIT_BASE..HEAD against the convention
+	@# scripts/check-commit-subject.sh holds the rule; this only supplies the
+	@# range. Skips rather than fails when the base ref is absent: a shallow
+	@# clone has nothing to compare against, and a check that cannot run should
+	@# say so. Passing quietly is how a gate stops being one.
+	@if ! git rev-parse -q --verify '$(COMMIT_BASE)' >/dev/null 2>&1; then \
+		echo "commit-check: $(COMMIT_BASE) is not available; skipped"; \
+	else \
+		bad=$$(git log --format='%s' '$(COMMIT_BASE)..HEAD' | while IFS= read -r s; do \
+			printf '%s\n' "$$s" | ./scripts/check-commit-subject.sh - || printf 'x'; \
+		done); \
+		if [ -n "$$bad" ]; then exit 1; fi; \
+		echo "commit-check: clean"; \
+	fi
+
+.PHONY: hooks
+hooks: ## Install this repository's git hooks (sets core.hooksPath)
+	@# Opt-in, and never the only gate -- CI runs commit-check over the whole
+	@# pull request, because a fork has no hooks and --no-verify skips them.
+	@git config core.hooksPath scripts/hooks
+	@echo "hooks: core.hooksPath -> scripts/hooks"
+	@echo "       this REPLACES .git/hooks, so any hook already there stops running"
+	@echo "       undo with: git config --unset core.hooksPath"
 
 .PHONY: selfhost
 selfhost: build ## The formatter's own repository must pass its own formatter
@@ -139,7 +170,7 @@ golden: ## Regenerate golden files after an intentional style change
 	@echo "goldens updated -- review the diff before committing: a change here is a breaking change"
 
 .PHONY: ci
-ci: fmt-check vet tidy-check lint shellcheck test selfhost ## Everything CI runs (offline)
+ci: fmt-check vet tidy-check lint shellcheck commit-check test selfhost ## Everything CI runs (offline)
 
 .PHONY: release-check
 release-check: ci fuzz compat-check ## The fuller pre-release gate (compat-check needs network)
