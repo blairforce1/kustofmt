@@ -22,8 +22,15 @@ spec:                                     spec:
 ## Why this exists
 
 `kustomize cfg fmt` used to format YAML into kustomize's canonical style. It was
-removed in kustomize v5. The machinery survived as a library — `sigs.k8s.io/kustomize/kyaml`
-— but the command did not, and the gap it left is a real one.
+removed in kustomize v5, and the removal is on the record: the `cfg`/`fn` alpha
+porcelain was cut for scope and maintenance reasons during the v5 API
+stabilization ([kustomize#3953](https://github.com/kubernetes-sigs/kustomize/issues/3953)),
+with a formatting *transformer* suggested as the replacement. The transformer
+never shipped, and users kept meeting the deprecation warning and asking where
+fmt went ([kustomize#4339](https://github.com/kubernetes-sigs/kustomize/issues/4339)).
+Cut for scope, not for lack of demand. The machinery survived as a library —
+`sigs.k8s.io/kustomize/kyaml` — but the command did not, and the gap it left is
+a real one.
 
 kustomize and Flux both *emit* a single house style: two-space map indentation,
 **indentless sequences** (the dash sits at the same column as its key), block
