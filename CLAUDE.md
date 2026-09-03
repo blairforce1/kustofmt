@@ -11,9 +11,14 @@ direct dependency, on purpose. The README's "Style contract", "Non-goals" and
 formatting behaviour.
 
 The code here was written by Claude from a brief, and the README's Provenance
-section says so. Keep that section accurate, and never add an AI co-author or
-session trailer to a commit: attribution lives in the README, not in git
-metadata.
+section says so; keep that section accurate. Since 2026-09-03 every commit
+whose content Claude generates carries a
+`Co-Authored-By: <model> <noreply@anthropic.com>` trailer naming the model that
+wrote it, which is the model in this session and no other. No session
+trailers. Dependabot's and GitHub's commits carry their own identities and
+nothing of Claude's. `docs/decisions/0014` records why. `docs/specs/kustofmt.md`
+and `docs/decisions/` are the design record; a change to formatting behaviour
+starts by reading them.
 
 ## Commands
 

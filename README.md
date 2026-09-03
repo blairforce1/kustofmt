@@ -49,6 +49,13 @@ The style is not invented here, and that is the point. kustofmt uses kyaml's own
 encoder, configured the way kyaml configures it. When kyaml's emission changes,
 kustofmt's output changes with it — by construction, not by us chasing it.
 
+kustofmt was developed for the
+[gitops-golden-path](https://github.com/blairforce1/gitops-golden-path-course)
+course, as an example of what can be done when the tool a repository needs
+does not exist. The course's config repository bans flow style and needed a
+formatter that matched the tools' own output, so one was built, and the course
+consumes it as a pinned filter.
+
 ## Install
 
 **Released binary** — from the [releases page](https://github.com/blairforce1/kustofmt/releases),
@@ -306,6 +313,13 @@ already does that.
 (The `sigs.k8s.io/kustomize/kyaml` *library* this tool depends on is unrelated
 to the encoding. It predates it by six years and remains the correct dependency.)
 
+Block style is a deliberate choice, not an accident of the emitter. It is the
+more common style in Kubernetes repositories today, and in the author's current
+opinion it is the easier one to read in a diff. As KYAML becomes more widely
+used, this tool and the course's approach will be re-evaluated with a more
+complete picture
+([decision 0015](docs/decisions/0015-block-style-now-revisit-with-kyaml.md)).
+
 ## Non-goals
 
 Restraint is a feature. kustofmt will not:
@@ -424,15 +438,24 @@ history so far has left the corpus untouched.
 
 ## Provenance
 
-kustofmt was written by Claude, Anthropic's AI model (Claude Opus 5, working
-in Claude Code), from a design brief. Every line of Go, every test, every
-workflow and every document in this repository is machine-written. blairforce1
-wrote the brief, made the design decisions, reviewed each change and is
-responsible for the result.
+kustofmt was written by Claude, Anthropic's AI model, working in Claude Code
+from a design brief. Every line of Go, every test, every workflow and every
+document in this repository is machine-written. Claude Opus 5 built the tool
+and cut the releases in August 2026; later documentation commits name their
+own model. blairforce1 wrote the brief, made the design decisions, reviewed
+each change and is responsible for the result. The
+[specification](docs/specs/kustofmt.md) and the
+[decision records](docs/decisions/INDEX.md) say what was decided and why.
 
-That is stated here because the repository is a portfolio piece as well as a
-tool. It is evidence of design and judgement, not of hand-written Go. Commits
-carry no AI co-author trailer; this section is the attribution.
+From 2026-09-03, every commit whose content Claude generated carries a
+`Co-Authored-By` trailer naming the model that wrote it
+([decision 0014](docs/decisions/0014-disclose-ai-provenance.md)). Commits
+before that date carry no trailer and were Claude-written all the same; the
+history was left as it was rather than rewritten to say so. Dependabot and
+GitHub sign their own commits, as they always have.
+
+Stated here because a reader of a public repository should know how its code
+was made.
 
 ## Contributing
 
