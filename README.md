@@ -422,6 +422,18 @@ the output style moved, which is a breaking change to this tool's public API and
 is versioned — and reviewed — as one. Every kyaml release in kustomize v5's
 history so far has left the corpus untouched.
 
+## Provenance
+
+kustofmt was written by Claude, Anthropic's AI model (Claude Opus 5, working
+in Claude Code), from a design brief. Every line of Go, every test, every
+workflow and every document in this repository is machine-written. blairforce1
+wrote the brief, made the design decisions, reviewed each change and is
+responsible for the result.
+
+That is stated here because the repository is a portfolio piece as well as a
+tool. It is evidence of design and judgement, not of hand-written Go. Commits
+carry no AI co-author trailer; this section is the attribution.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). `make ci` runs everything the pipeline

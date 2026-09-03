@@ -20,6 +20,10 @@ is small.
 
 ### Changed
 
+- README.md states the project's provenance: the code, tests, workflows and
+  documents were written by Claude (Claude Opus 5, in Claude Code) from a
+  brief, with the design decisions made and reviewed by blairforce1. Nothing
+  about the formatter changed.
 - CONTRIBUTING.md documents the commit convention in full, and records why it
   is Go's `package: description` rather than Conventional Commits: the release
   version comes from `compatibility.yaml` and the bump size from the golden

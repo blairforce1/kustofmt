@@ -10,6 +10,11 @@ direct dependency, on purpose. The README's "Style contract", "Non-goals" and
 "Known limitations" sections are the specification — read them before changing
 formatting behaviour.
 
+The code here was written by Claude from a brief, and the README's Provenance
+section says so. Keep that section accurate, and never add an AI co-author or
+session trailer to a commit: attribution lives in the README, not in git
+metadata.
+
 ## Commands
 
 `make help` lists every target. Everything CI runs is a Makefile target, so a
