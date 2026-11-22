@@ -13,7 +13,7 @@
 # Maintained by `go run ./cmd/compat`; every row is re-derived from upstream by
 # `make compat-check`. Tracking starts at `floor` -- older kustomize releases are
 # deliberately absent rather than accidentally missing.
-version: 0.1.5
+version: 0.1.6
 floor: 5.6.0
 releases:
 - kustofmt: 0.1.0
@@ -36,3 +36,7 @@ releases:
   kyaml: v0.21.1
   kustomize:
   - 5.8.1
+- kustofmt: 0.1.6
+  kyaml: v0.21.2
+  kustomize:
+  - 5.8.2
