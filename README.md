@@ -415,8 +415,9 @@ something you have to believe.
 | 0.1.3 | v0.21.0 | 5.8.0 |
 | 0.1.4 | v0.21.1 | 5.8.1 |
 | 0.1.6 | v0.21.2 | 5.8.2 |
+| 0.1.7 | v0.21.3 | 5.8.3 |
 
-The current release is **0.1.6**, built against kyaml v0.21.2. Each row is the
+The current release is **0.1.7**, built against kyaml v0.21.3. Each row is the
 release that first linked that kyaml; later releases linking the same kyaml
 emit identical output.
 <!-- compat:end -->
