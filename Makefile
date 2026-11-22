@@ -4,7 +4,7 @@
 BIN            := kustofmt
 PKG            := ./...
 LOCALBIN       := $(CURDIR)/bin
-GOLANGCI_VER   := v2.13.1
+GOLANGCI_VER   := v2.15.0
 GOLANGCI       := $(LOCALBIN)/golangci-lint
 # Pinned: an unpinned linter means local and CI disagree about what is clean,
 # and the disagreement only shows up as a red build after a tag is cut.
